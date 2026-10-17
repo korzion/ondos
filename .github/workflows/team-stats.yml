@@ -1,0 +1,56 @@
+name: Team stats page
+
+# Rebuilds the team activity page on every push to main, every night,
+# and when started by hand from the Actions tab.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"   # 06:00 Istanbul time
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: team-stats-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history is needed for the statistics
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect statistics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p site/data
+          python dashboard/collect_stats.py --out site/data/stats.json
+          cp dashboard/index.html site/index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

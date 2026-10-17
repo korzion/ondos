@@ -1,0 +1,50 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+npm-debug.log*
+
+# Embedded (PlatformIO / Arduino)
+.pio/
+*.elf
+*.hex
+*.bin
+
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj
+*.sln
+
+# Large media and exports — share these via Drive, not git
+*.mp4
+*.mov
+*.avi
+*.zip
+*.rar
+*.7z
+
+# Generated stats page
+site/

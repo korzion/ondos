@@ -1,0 +1,15 @@
+{
+  "_help": "Fill in each person's GitHub username. Add any other email they commit with to 'emails'. Names here are what the dashboard shows.",
+  "members": [
+    {"name": "Ahmet Arif Aygün",      "github": "arif-aygun", "emails": []},
+    {"name": "Beyzanur Bilir",        "github": "BeyzanurBilir", "emails": []},
+    {"name": "Enis Talha Şahin",      "github": "enistalhasahin", "emails": []},
+    {"name": "Süleyman Mevlid Uzun",  "github": "Smevlid", "emails": []},
+    {"name": "Mohammed Z A Alaklouk", "github": "Mohammed-Alaklouk", "emails": []},
+    {"name": "Talha Tanrıverdi",      "github": "ttalhA0", "emails": []},
+    {"name": "Mert Sezer Güler",      "github": "Mithwindy", "emails": []},
+    {"name": "İbrahim Ahmetoğlu",     "github": "iahm2024", "emails": []},
+    {"name": "Yağmur Gül",            "github": "yagmur-gul", "emails": []},
+    {"name": "Aayan Mustafa",         "github": "rana-aayan", "emails": []}
+  ]
+}
