@@ -6,6 +6,7 @@
 <title>Ondos Team Activity</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script>try{const t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
 /* Layout: header + summary tiles, weekly chart, people table, person × module grid, module bars, recent commits. */
 :root{
@@ -13,9 +14,13 @@
   --accent:#1F8A70; --accent-soft:#DDF1EA; --amber:#E09F3E;
   --display:'Rubik',system-ui,sans-serif; --body:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
 }
-@media (prefers-color-scheme:dark){:root{
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0E1923; --surface:#162431; --line:#2A3B4B; --fg:#E8EEF3; --muted:#93A3B2;
   --accent:#3CC29C; --accent-soft:#173B33; --amber:#E9AE55; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1923; --surface:#162431; --line:#2A3B4B; --fg:#E8EEF3; --muted:#93A3B2;
+  --accent:#3CC29C; --accent-soft:#173B33; --amber:#E9AE55; color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--body)}
 .wrap{max-width:1180px;margin:0 auto;padding:28px max(16px,env(safe-area-inset-left)) 56px;display:flex;flex-direction:column;gap:22px}
@@ -56,6 +61,9 @@ tr:last-child td{border-bottom:0}
 .links a{border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--fg);text-decoration:none;background:var(--surface);font-size:13px}
 .links a:hover{border-color:var(--accent)}
 .empty{color:var(--muted);text-align:center;padding:30px}
+.hdr-right{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.theme-btn{border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--fg);background:var(--surface);font:13px var(--body);cursor:pointer;min-height:32px}
+.theme-btn:hover{border-color:var(--accent)}
 canvas{max-width:100%}
 </style>
 </head>
@@ -67,7 +75,10 @@ canvas{max-width:100%}
       <h1>Ondos – Team Activity</h1>
       <div class="meta" id="meta">Loading…</div>
     </div>
-    <div class="links" id="links"></div>
+    <div class="hdr-right">
+      <div class="links" id="links"></div>
+      <button class="theme-btn" id="theme" type="button" aria-label="Switch light/dark theme"></button>
+    </div>
   </header>
 
   <section class="tiles" id="tiles"></section>
@@ -112,11 +123,22 @@ const fmt=n=>n.toLocaleString('en-US');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ago=iso=>{if(!iso)return '—';const d=(Date.now()-new Date(iso))/864e5;return d<1?'today':d<2?'yesterday':Math.floor(d)+' days ago'};
 
-fetch('data/stats.json',{cache:'no-store'}).then(r=>r.json()).then(render).catch(()=>{
+// light/dark toggle: follows the system until the viewer picks one, then remembers it
+let DATA=null;
+const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches};
+const themeBtn=document.getElementById('theme');
+const label=()=>{themeBtn.textContent=isDark()?'☀ Light':'☾ Dark'};
+function rerender(){if(!DATA)return;document.querySelectorAll('canvas').forEach(c=>{const ch=Chart.getChart(c);if(ch)ch.destroy()});render(DATA)}
+themeBtn.onclick=()=>{const t=isDark()?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem('theme',t)}catch(e){}label();rerender()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{label();rerender()});
+label();
+
+fetch('data/stats.json',{cache:'no-store'}).then(r=>r.json()).then(d=>{DATA=d;render(d)}).catch(()=>{
   document.getElementById('meta').textContent='No data yet. The statistics appear after the first workflow run.';
 });
 
 function render(S){
+  Chart.defaults.color=css('--muted');Chart.defaults.borderColor=css('--line');
   const repo=S.repo, gh='https://github.com/'+repo;
   document.getElementById('meta').innerHTML=`Repository <a href="${gh}">${esc(repo)}</a> · updated ${new Date(S.generated_at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})}`;
   document.getElementById('links').innerHTML=[
