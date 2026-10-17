@@ -26,7 +26,7 @@ MODULES = {
     "glove": "B · Glove",
     "vision": "C · Vision System",
     "simulator": "D · Simulator & 3D Twin",
-    "path-planning-control": "E · Path Planning & Control",
+    "path-planning": "E · Path Planning & Control",
     "ai": "F · AI",
     "control-station": "G · Control Station",
     "shared": "Shared",
