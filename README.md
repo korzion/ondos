@@ -19,21 +19,17 @@ Ondos is being explored through multiple visual directions. The films below are 
 
 A technical, interface-led interpretation focused on the relationship between the glove, vision system, maze platform, and AI solver.
 
-<video controls width="100%" preload="metadata">
-  <source src="docs/media/ondos-concept-01-blueprint.mp4" type="video/mp4">
-</video>
+[![Ondos Concept 01 — Blueprint](docs/media/ondos-concept-01-blueprint.webp)](docs/media/ondos-concept-01-blueprint.mp4)
 
-[Play or download Concept 01](docs/media/ondos-concept-01-blueprint.mp4)
+[Watch with sound (MP4)](docs/media/ondos-concept-01-blueprint.mp4)
 
 ### Concept 02 — Product Film
 
 A cinematic, hardware-led interpretation that presents Ondos as a complete physical product and follows the system from assembly to autonomous maze solving.
 
-<video controls width="100%" preload="metadata">
-  <source src="docs/media/ondos-concept-02-product-film.mp4" type="video/mp4">
-</video>
+[![Ondos Concept 02 — Product Film](docs/media/ondos-concept-02-product-film.webp)](docs/media/ondos-concept-02-product-film.mp4)
 
-[Play or download Concept 02](docs/media/ondos-concept-02-product-film.mp4)
+[Watch with sound (MP4)](docs/media/ondos-concept-02-product-film.mp4)
 
 > [!NOTE]
 > Both films are living concept studies. They represent different creative directions and remain open to revision as the mechanical design, interaction model, and software architecture evolve.
