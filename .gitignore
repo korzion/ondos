@@ -46,5 +46,9 @@ npm-debug.log*
 *.rar
 *.7z
 
+# Curated README concept films (small, web-optimized H.264/AAC files)
+!docs/media/ondos-concept-01-blueprint.mp4
+!docs/media/ondos-concept-02-product-film.mp4
+
 # Generated stats page
 site/
