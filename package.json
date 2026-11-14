@@ -1,0 +1,19 @@
+{
+  "name": "ondos",
+  "private": true,
+  "description": "TypeScript parts of the Ondos shared library (topics.ts, bus.ts). Module apps add their own package.json.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test shared/bus/bus.test.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "mqtt": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

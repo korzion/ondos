@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/vision.ball.schema.json",
+  "title": "vision/ball",
+  "description": "Payload of vision/ball (IF-04). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-04",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "x_mm": {
+      "type": "number"
+    },
+    "y_mm": {
+      "type": "number"
+    },
+    "vx_mm_s": {
+      "type": "number"
+    },
+    "vy_mm_s": {
+      "type": "number"
+    },
+    "is_visible": {
+      "type": "boolean"
+    },
+    "is_predicted": {
+      "type": "boolean"
+    },
+    "is_on_exit": {
+      "type": "boolean"
+    },
+    "frame_age_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "meas_x_mm": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "meas_y_mm": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "frame_age_ms",
+    "is_on_exit",
+    "is_predicted",
+    "is_visible",
+    "meas_x_mm",
+    "meas_y_mm",
+    "vx_mm_s",
+    "vy_mm_s",
+    "x_mm",
+    "y_mm"
+  ],
+  "unevaluatedProperties": false
+}

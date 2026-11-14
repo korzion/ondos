@@ -1,0 +1,15 @@
+{
+  "$comment": "Number codes for enum values inside binary packets (IF-01 ESP-NOW, IF-02 serial). Value names come from schemas/common.schema.json; gen.py checks that every value has a code. Tables with from_doc = false are a DRAFT: the design document does not number them. A (IF-02) and B (IF-01) confirm or change them.",
+  "tables": {
+    "mode": {"enum": "mode", "from_doc": false, "codes": {"glove": 0, "ai": 1, "simple": 2}},
+    "state": {"enum": "glove_info_state", "from_doc": false,
+              "codes": {"setup": 0, "ready": 1, "playing": 2, "paused": 3, "finished": 4, "e_stop": 5, "no_laptop": 6}},
+    "platform_source": {"enum": "platform_source", "from_doc": false, "codes": {"none": 0, "glove": 1, "ai": 2, "simple": 3}},
+    "fault": {"enum": "fault", "from_doc": false,
+              "codes": {"none": 0, "motor": 1, "imu": 2, "power": 3, "serial": 4, "watchdog": 5, "calibration": 6}},
+    "warning_kind": {"enum": "warning_kind", "from_doc": false, "codes": {"not_moving": 0, "away_from_exit": 1}},
+    "serial_command": {"enum": null, "from_doc": false, "codes": {"e_stop": 0, "clear_e_stop": 1, "calibrate_glove": 2}},
+    "haptic_pattern": {"enum": "haptic_pattern", "from_doc": true,
+                       "codes": {"not_moving": 1, "away_from_exit": 2, "mode_changed": 3, "calibrated": 4}}
+  }
+}

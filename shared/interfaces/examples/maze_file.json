@@ -1,0 +1,17 @@
+{
+  "maze_id": "example-2x2",
+  "cell_size_mm": 40.0,
+  "rows": 2,
+  "cols": 2,
+  "origin_x_mm": -40.0,
+  "origin_y_mm": -40.0,
+  "walls": [[14, 14], [9, 3]],
+  "wall_thickness_mm": 4.0,
+  "wall_height_mm": 10.0,
+  "start_cell": {"row": 0, "col": 0},
+  "exit_cell": {"row": 0, "col": 1},
+  "exit_x_mm": 20.0,
+  "exit_y_mm": -20.0,
+  "exit_radius_mm": 8.0,
+  "ball_diameter_mm": 12.0
+}

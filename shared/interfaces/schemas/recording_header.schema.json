@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/recording_header.schema.json",
+  "title": "Recording file, line 1 (IF-09)",
+  "type": "object",
+  "properties": {
+    "type": {
+      "const": "header"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "game_id": {
+      "$ref": "common.schema.json#/$defs/game_id"
+    },
+    "maze_id": {
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "common.schema.json#/$defs/mode"
+    },
+    "start_time_s": {
+      "type": "number"
+    },
+    "git_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "type",
+    "format_version",
+    "game_id",
+    "maze_id",
+    "mode",
+    "start_time_s",
+    "git_commit"
+  ],
+  "additionalProperties": false
+}

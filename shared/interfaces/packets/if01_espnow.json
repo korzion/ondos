@@ -1,0 +1,23 @@
+{
+  "$comment": "IF-01 Glove ESP32 <-> Platform ESP32 over ESP-NOW. Owner: B. Field names, types, units and msg_type values are from the design document. DRAFT (not in the document): field order = order of the document's table, packed with no padding, little endian (IF-02 serial rule), bool = 1 byte, enum = 1 byte code from codes.json. To be confirmed by A and B.",
+  "link": "espnow",
+  "status": "draft",
+  "packets": [
+    {"name": "GloveData", "msg_type": 1, "msg_type_from_doc": true, "direction": "glove -> platform", "rate": "50 Hz",
+     "fields": [
+       ["seq", "u16"],
+       ["hand_tilt_x_deg", "f32"], ["hand_tilt_y_deg", "f32"],
+       ["ax_m_s2", "f32"], ["ay_m_s2", "f32"], ["az_m_s2", "f32"],
+       ["gx_deg_s", "f32"], ["gy_deg_s", "f32"], ["gz_deg_s", "f32"],
+       ["is_calibrated", "bool"]]},
+    {"name": "GloveStatus", "msg_type": 2, "msg_type_from_doc": true, "direction": "glove -> platform", "rate": "1 Hz and on change",
+     "fields": [["battery_pct", "u8"], ["firmware_version", "u16"]]},
+    {"name": "GameInfo", "msg_type": 10, "msg_type_from_doc": true, "direction": "platform -> glove", "rate": "5 Hz and on change",
+     "fields": [
+       ["mode", "enum:mode"], ["state", "enum:state"],
+       ["is_vibration_enabled", "bool"], ["vibration_intensity_pct", "u8"],
+       ["calibrate_request", "u8"]]},
+    {"name": "Haptic", "msg_type": 11, "msg_type_from_doc": true, "direction": "platform -> glove", "rate": "on event",
+     "fields": [["pattern_id", "u8"], ["intensity_pct", "u8"], ["duration_ms", "u16"]]}
+  ]
+}

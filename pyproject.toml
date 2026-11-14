@@ -1,0 +1,26 @@
+[project]
+name = "ondos-shared"
+version = "0.1.0"
+description = "Ondos shared library: interfaces, bus helpers, protocol, playback tool, test base"
+requires-python = ">=3.11"
+dependencies = [
+    "paho-mqtt>=2.0,<3",
+    "jsonschema>=4.18",
+]
+
+[project.optional-dependencies]
+serial = ["pyserial>=3.5"]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["shared*"]
+
+[tool.setuptools.package-data]
+shared = ["interfaces/*.json", "interfaces/schemas/*.json", "interfaces/packets/*.json", "interfaces/examples/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["shared/tests"]

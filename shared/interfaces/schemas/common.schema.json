@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/common.schema.json",
+  "title": "Ondos common types and enums (D4, D5, IF-03)",
+  "description": "Single source of every enum. gen.py reads these to produce shared/topics.py, shared/topics.ts and the packet headers.",
+  "$defs": {
+    "cell": {
+      "type": "object",
+      "properties": {
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "row",
+        "col"
+      ],
+      "additionalProperties": false,
+      "description": "{row, col}; row 0 / col 0 at the origin corner; rows grow to +y, cols to +x (D4)"
+    },
+    "point_mm": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[x_mm, y_mm] in the board frame"
+    },
+    "route_points_mm": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/point_mm"
+      },
+      "maxItems": 3
+    },
+    "game_id": {
+      "type": "string",
+      "pattern": "^[0-9]{8}-[0-9]{6}$",
+      "description": "Time the game entered ready, YYYYMMDD-HHMMSS (D4)"
+    },
+    "state": {
+      "enum": [
+        "setup",
+        "ready",
+        "playing",
+        "paused",
+        "finished",
+        "e_stop"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "glove",
+        "ai",
+        "simple"
+      ],
+      "description": "simple = PID controller"
+    },
+    "result": {
+      "enum": [
+        "none",
+        "completed",
+        "timeout",
+        "stopped",
+        "aborted"
+      ]
+    },
+    "writer": {
+      "enum": [
+        "bridge",
+        "vision",
+        "auto_controller",
+        "game_manager",
+        "cs_app",
+        "recorder",
+        "replay"
+      ],
+      "description": "Runtime program identifiers (IF-03)"
+    },
+    "config_key": {
+      "enum": [
+        "platform",
+        "glove",
+        "vision",
+        "ai",
+        "pid",
+        "game",
+        "cs"
+      ]
+    },
+    "platform_source": {
+      "enum": [
+        "none",
+        "glove",
+        "ai",
+        "simple"
+      ]
+    },
+    "fault": {
+      "enum": [
+        "none",
+        "motor",
+        "imu",
+        "power",
+        "serial",
+        "watchdog",
+        "calibration"
+      ]
+    },
+    "warning_kind": {
+      "enum": [
+        "not_moving",
+        "away_from_exit"
+      ]
+    },
+    "maze_source": {
+      "enum": [
+        "file",
+        "scan",
+        "file_checked"
+      ]
+    },
+    "route_status": {
+      "enum": [
+        "valid",
+        "no_path",
+        "invalid"
+      ]
+    },
+    "event_kind": {
+      "enum": [
+        "wall_hit"
+      ]
+    },
+    "wall_side": {
+      "enum": [
+        "n",
+        "e",
+        "s",
+        "w"
+      ]
+    },
+    "edit_state": {
+      "enum": [
+        "clear",
+        "hand_present",
+        "occluded",
+        "rescanning"
+      ]
+    },
+    "edit_reason": {
+      "enum": [
+        "hand",
+        "markers_hidden",
+        "plate_not_level",
+        "scan_differs",
+        "scan_invalid",
+        "exit_hidden",
+        "no_path"
+      ]
+    },
+    "active_controller": {
+      "enum": [
+        "ai",
+        "pid",
+        "none"
+      ]
+    },
+    "ai_status": {
+      "enum": [
+        "idle",
+        "active",
+        "ball_lost",
+        "no_maze",
+        "no_path",
+        "no_model",
+        "stale_platform",
+        "stale_game",
+        "e_stop",
+        "fault"
+      ]
+    },
+    "policy": {
+      "enum": [
+        "rl",
+        "imitation"
+      ]
+    },
+    "command": {
+      "enum": [
+        "start",
+        "pause",
+        "resume",
+        "stop",
+        "new_game",
+        "set_mode",
+        "e_stop",
+        "clear_e_stop",
+        "read_maze",
+        "calibrate_camera",
+        "calibrate_glove",
+        "replay",
+        "replay_pause",
+        "replay_resume",
+        "replay_stop"
+      ]
+    },
+    "replay_speed": {
+      "enum": [
+        0.5,
+        1,
+        2
+      ]
+    },
+    "haptic_pattern": {
+      "enum": [
+        "not_moving",
+        "away_from_exit",
+        "mode_changed",
+        "calibrated"
+      ],
+      "description": "IF-01 pattern_id 1..4 in this order; 'disconnected' is played by the glove itself"
+    },
+    "glove_info_state": {
+      "enum": [
+        "setup",
+        "ready",
+        "playing",
+        "paused",
+        "finished",
+        "e_stop",
+        "no_laptop"
+      ],
+      "description": "GameInfo.state (IF-01): D5 states + no_laptop"
+    },
+    "walls": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        }
+      },
+      "description": "walls[row][col] bit flags N=1, E=2, S=4, W=8"
+    }
+  }
+}

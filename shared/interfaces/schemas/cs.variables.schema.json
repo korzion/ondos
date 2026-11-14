@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/cs.variables.schema.json",
+  "title": "cs/variables/<key>",
+  "description": "Payload of cs/variables/<key> (IF-07): envelope + one entry per changed variable. Allowed names per key come from variables.json (checked by the bus helper).",
+  "x-interface": "IF-07",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    }
+  },
+  "additionalProperties": {
+    "type": [
+      "number",
+      "boolean",
+      "string"
+    ]
+  }
+}

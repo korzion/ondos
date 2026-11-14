@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/glove.state.schema.json",
+  "title": "glove/state",
+  "description": "Payload of glove/state (IF-02). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-02",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "hand_tilt_x_deg": {
+      "type": "number"
+    },
+    "hand_tilt_y_deg": {
+      "type": "number"
+    },
+    "ax_m_s2": {
+      "type": "number"
+    },
+    "ay_m_s2": {
+      "type": "number"
+    },
+    "az_m_s2": {
+      "type": "number"
+    },
+    "gx_deg_s": {
+      "type": "number"
+    },
+    "gy_deg_s": {
+      "type": "number"
+    },
+    "gz_deg_s": {
+      "type": "number"
+    },
+    "battery_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "rssi_dbm": {
+      "type": "integer",
+      "minimum": -100,
+      "maximum": 0
+    },
+    "is_calibrated": {
+      "type": "boolean"
+    },
+    "is_connected": {
+      "type": "boolean"
+    },
+    "firmware_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "ax_m_s2",
+    "ay_m_s2",
+    "az_m_s2",
+    "battery_pct",
+    "firmware_version",
+    "gx_deg_s",
+    "gy_deg_s",
+    "gz_deg_s",
+    "hand_tilt_x_deg",
+    "hand_tilt_y_deg",
+    "is_calibrated",
+    "is_connected",
+    "rssi_dbm"
+  ],
+  "unevaluatedProperties": false
+}

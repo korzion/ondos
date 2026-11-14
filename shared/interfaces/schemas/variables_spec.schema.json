@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/variables_spec.schema.json",
+  "title": "<key>/variables_spec",
+  "description": "Payload of <key>/variables_spec for every config key (IF-07). Variable names per key are in variables.json.",
+  "x-interface": "IF-07",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "number",
+              "boolean",
+              "string"
+            ]
+          },
+          "default": {
+            "type": [
+              "number",
+              "boolean",
+              "string"
+            ]
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_live": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "default",
+          "min",
+          "max",
+          "choices",
+          "is_live",
+          "description"
+        ],
+        "additionalProperties": false,
+        "description": "min/max are null for bool and choice variables; choices is null unless it is a choice variable; step may be left out (IF-07)."
+      }
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "variables"
+  ],
+  "unevaluatedProperties": false
+}

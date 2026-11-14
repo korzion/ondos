@@ -1,0 +1,28 @@
+{
+  "$comment": "Single source of topic names (IF-03, section 6.2). gen.py turns this into shared/topics.py and shared/topics.ts. Every topic starts at version 1.",
+  "topics": [
+    {"name": "game/state", "interface": "IF-05", "writer": "game_manager", "retained": true, "qos": 1, "payload": "json", "schema": "game.state.schema.json", "version": 1, "rate": "10 Hz + every change"},
+    {"name": "game/warning", "interface": "IF-05", "writer": "game_manager", "retained": false, "qos": 1, "payload": "json", "schema": "game.warning.schema.json", "version": 1, "rate": "on event"},
+
+    {"name": "vision/ball", "interface": "IF-04", "writer": "vision", "retained": false, "qos": 0, "payload": "json", "schema": "vision.ball.schema.json", "version": 1, "rate": "every frame (30-60 Hz)"},
+    {"name": "vision/maze", "interface": "IF-04", "writer": "vision", "retained": true, "qos": 1, "payload": "json", "schema": "vision.maze.schema.json", "version": 1, "rate": "each validated scan"},
+    {"name": "plan/distance_map", "interface": "IF-04", "writer": "vision", "retained": true, "qos": 1, "payload": "json", "schema": "plan.distance_map.schema.json", "version": 1, "rate": "each validated maze"},
+    {"name": "plan/route", "interface": "IF-04", "writer": "vision", "retained": false, "qos": 0, "payload": "json", "schema": "plan.route.schema.json", "version": 1, "rate": "every vision/ball frame with a valid maze"},
+    {"name": "vision/status", "interface": "IF-04", "writer": "vision", "retained": true, "qos": 1, "payload": "json", "schema": "vision.status.schema.json", "version": 1, "rate": "1 Hz"},
+    {"name": "vision/event", "interface": "IF-04", "writer": "vision", "retained": false, "qos": 1, "payload": "json", "schema": "vision.event.schema.json", "version": 1, "rate": "on event"},
+    {"name": "vision/image", "interface": "IF-04", "writer": "vision", "retained": false, "qos": 0, "payload": "jpeg", "schema": null, "version": null, "rate": "image_rate_hz (5-10 Hz, 0 = off)"},
+    {"name": "vision/edit_state", "interface": "IF-04", "writer": "vision", "retained": true, "qos": 1, "payload": "json", "schema": "vision.edit_state.schema.json", "version": 1, "rate": "on every change + 1 Hz"},
+
+    {"name": "ai/target_tilt", "interface": "IF-06", "writer": "auto_controller", "retained": false, "qos": 0, "payload": "json", "schema": "ai.target_tilt.schema.json", "version": 1, "rate": "every answered ball sample (AI mode)"},
+    {"name": "control/target_tilt", "interface": "IF-06", "writer": "auto_controller", "retained": false, "qos": 0, "payload": "json", "schema": "control.target_tilt.schema.json", "version": 1, "rate": "every answered ball sample (PID mode)"},
+    {"name": "ai/status", "interface": "IF-06", "writer": "auto_controller", "retained": false, "qos": 0, "payload": "json", "schema": "ai.status.schema.json", "version": 1, "rate": "10 Hz"},
+
+    {"name": "platform/state", "interface": "IF-02", "writer": "bridge", "retained": false, "qos": 0, "payload": "json", "schema": "platform.state.schema.json", "version": 1, "rate": "50 Hz"},
+    {"name": "glove/state", "interface": "IF-02", "writer": "bridge", "retained": false, "qos": 0, "payload": "json", "schema": "glove.state.schema.json", "version": 1, "rate": "50 Hz"},
+
+    {"name": "cs/command", "interface": "IF-07", "writer": "cs_app", "retained": false, "qos": 1, "payload": "json", "schema": "cs.command.schema.json", "version": 1, "rate": "on user action"},
+    {"name": "cs/variables/{key}", "interface": "IF-07", "writer": "cs_app", "retained": true, "qos": 1, "payload": "json", "schema": "cs.variables.schema.json", "version": 1, "rate": "on Apply, max 10/s while sliding"},
+    {"name": "{key}/variables_spec", "interface": "IF-07", "writer": "{owner of key}", "retained": true, "qos": 1, "payload": "json", "schema": "variables_spec.schema.json", "version": 1, "rate": "on start and on change"},
+    {"name": "sys/online/{program}", "interface": "IF-03", "writer": "{program}", "retained": true, "qos": 1, "payload": "bool", "schema": null, "version": null, "rate": "on connect; false via MQTT Last Will"}
+  ]
+}

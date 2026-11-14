@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/ai.status.schema.json",
+  "title": "ai/status",
+  "description": "Payload of ai/status (IF-06). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-06",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "active_controller": {
+      "$ref": "common.schema.json#/$defs/active_controller"
+    },
+    "status": {
+      "$ref": "common.schema.json#/$defs/ai_status"
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/policy"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "model_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_points_mm": {
+      "$ref": "common.schema.json#/$defs/route_points_mm"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "active_controller",
+    "model_version",
+    "policy",
+    "status",
+    "target_points_mm"
+  ],
+  "unevaluatedProperties": false
+}

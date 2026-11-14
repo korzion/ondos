@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/fixture_line.schema.json",
+  "title": "Fixture file line for the playback tool in fixture mode (IF-09)",
+  "description": "msg holds the topic fields. Envelope fields left out are filled in by the playback tool; envelope fields given are kept (e.g. writer = replay to test rejection).",
+  "type": "object",
+  "properties": {
+    "t_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "topic": {
+      "type": "string"
+    },
+    "msg": {}
+  },
+  "required": [
+    "t_s",
+    "topic",
+    "msg"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/envelope.schema.json",
+  "title": "Envelope (IF-03)",
+  "description": "Fields of every bus message except vision/image and sys/online/<program>.",
+  "type": "object",
+  "properties": {
+    "timestamp_s": {
+      "type": "number",
+      "description": "Laptop clock (Unix time) at publish"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "writer": {
+      "$ref": "common.schema.json#/$defs/writer"
+    }
+  },
+  "required": [
+    "timestamp_s",
+    "seq",
+    "version",
+    "writer"
+  ]
+}

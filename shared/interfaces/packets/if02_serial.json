@@ -1,0 +1,46 @@
+{
+  "$comment": "IF-02 Platform bridge <-> Platform ESP32 over USB serial. Owner: A. From the document: 921600 8N1, COBS + CRC-16/CCITT-FALSE, little endian, the message list and what each carries. DRAFT (not in the document): msg_type values, field order, sizes and enum codes. Frame = COBS(payload + CRC-16 of payload, little endian) followed by 0x00; payload starts with msg_type (u8). To be confirmed by A.",
+  "link": "serial",
+  "status": "draft",
+  "packets": [
+    {"name": "PlatformState", "msg_type": 20, "direction": "esp32 -> bridge", "rate": "50 Hz",
+     "fields": [
+       ["tilt_x_deg", "f32"], ["tilt_y_deg", "f32"],
+       ["applied_tilt_x_deg", "f32"], ["applied_tilt_y_deg", "f32"],
+       ["source", "enum:platform_source"], ["mode", "enum:mode"],
+       ["mode_button_presses", "u32"],
+       ["is_e_stop", "bool"], ["is_laptop_connected", "bool"], ["is_glove_connected", "bool"],
+       ["fault", "enum:fault"]]},
+    {"name": "GloveDataFwd", "msg_type": 21, "direction": "esp32 -> bridge", "rate": "50 Hz",
+     "fields": [
+       ["seq", "u16"],
+       ["hand_tilt_x_deg", "f32"], ["hand_tilt_y_deg", "f32"],
+       ["ax_m_s2", "f32"], ["ay_m_s2", "f32"], ["az_m_s2", "f32"],
+       ["gx_deg_s", "f32"], ["gy_deg_s", "f32"], ["gz_deg_s", "f32"],
+       ["is_calibrated", "bool"],
+       ["rssi_dbm", "i8"]]},
+    {"name": "GloveStatusFwd", "msg_type": 22, "direction": "esp32 -> bridge", "rate": "1 Hz",
+     "fields": [["battery_pct", "u8"], ["firmware_version", "u16"]]},
+    {"name": "HostState", "msg_type": 30, "direction": "bridge -> esp32", "rate": "every game/state (10 Hz)",
+     "fields": [["state", "enum:state"], ["mode", "enum:mode"]]},
+    {"name": "TargetTilt", "msg_type": 31, "direction": "bridge -> esp32", "rate": "every target that passes the gate",
+     "fields": [["target_tilt_x_deg", "f32"], ["target_tilt_y_deg", "f32"]]},
+    {"name": "Warning", "msg_type": 32, "direction": "bridge -> esp32", "rate": "on game/warning, glove mode only",
+     "fields": [["kind", "enum:warning_kind"], ["intensity_pct", "u8"]]},
+    {"name": "Settings", "msg_type": 33, "direction": "bridge -> esp32", "rate": "on cs/variables/platform and cs/variables/glove",
+     "fields": [
+       ["max_tilt_deg", "f32"], ["max_tilt_speed_deg_s", "f32"],
+       ["glove_gain", "f32"], ["glove_deadzone_deg", "f32"],
+       ["is_vibration_enabled", "bool"], ["vibration_intensity_pct", "u8"],
+       ["filter_strength", "f32"]]},
+    {"name": "Command", "msg_type": 34, "direction": "bridge -> esp32", "rate": "on cs/command",
+     "fields": [["cmd", "enum:serial_command"]]},
+    {"name": "InjectGloveData", "msg_type": 40, "direction": "bridge -> esp32", "rate": "test build only (A-T2)",
+     "fields": [
+       ["seq", "u16"],
+       ["hand_tilt_x_deg", "f32"], ["hand_tilt_y_deg", "f32"],
+       ["ax_m_s2", "f32"], ["ay_m_s2", "f32"], ["az_m_s2", "f32"],
+       ["gx_deg_s", "f32"], ["gy_deg_s", "f32"], ["gz_deg_s", "f32"],
+       ["is_calibrated", "bool"]]}
+  ]
+}

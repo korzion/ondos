@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/plan.route.schema.json",
+  "title": "plan/route",
+  "description": "Payload of plan/route (IF-04). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-04",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "maze_id": {
+      "type": "string"
+    },
+    "ball_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "$ref": "common.schema.json#/$defs/route_status"
+    },
+    "ball_cell": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/cell"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_points_mm": {
+      "$ref": "common.schema.json#/$defs/route_points_mm"
+    },
+    "distance_to_exit_cells": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "ball_cell",
+    "ball_seq",
+    "distance_to_exit_cells",
+    "maze_id",
+    "status",
+    "target_points_mm"
+  ],
+  "unevaluatedProperties": false
+}
