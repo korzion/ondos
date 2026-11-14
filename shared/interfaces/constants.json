@@ -7,7 +7,7 @@
     "GLOVE_DATA_LOSS_MS": {"value": 300, "source": "IF-01 GloveData lost after 300 ms"},
     "GAME_INFO_LOSS_MS": {"value": 1000, "source": "IF-01 GameInfo max delay; glove plays 'disconnected'"},
     "CONTROLLER_INPUT_MAX_AGE_MS": {"value": 100, "source": "IF-06: ball and platform data expire after 100 ms"},
-    "BROKER_HOST": {"value": "localhost", "source": "IF-03"},
+    "BROKER_HOST": {"value": "127.0.0.1", "source": "IF-03 (localhost only; IPv4 address, because on Windows \"localhost\" tries IPv6 ::1 first and Mosquitto listens on 127.0.0.1)"},
     "BROKER_TCP_PORT": {"value": 1883, "source": "IF-03"},
     "BROKER_WS_PORT": {"value": 9001, "source": "IF-03"},
     "RECORDING_FORMAT_VERSION": {"value": 1, "source": "IF-09"}

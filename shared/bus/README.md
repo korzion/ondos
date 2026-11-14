@@ -30,7 +30,7 @@ Setup once from the repository root: `pip install -e .`
 import { Bus } from "../shared/bus/bus";
 import { GAME_STATE } from "../shared/topics";
 
-const bus = new Bus("game_manager");              // ws://localhost:9001 in the app UI
+const bus = new Bus("game_manager");              // ws://127.0.0.1:9001 in the app UI
 bus.subscribe(VISION_BALL, (topic, msg, tRecvS) => { ... });
 await bus.connect();
 bus.publish(GAME_STATE, { state: "setup", ... });

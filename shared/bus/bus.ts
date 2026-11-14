@@ -1,5 +1,5 @@
-// Shared bus helper for the TypeScript programs: GameManager, Recorder (Node.js, mqtt://localhost:1883)
-// and the Control Station app UI (ws://localhost:9001). Same rules as shared/bus/bus.py (IF-03):
+// Shared bus helper for the TypeScript programs: GameManager, Recorder (Node.js, mqtt://127.0.0.1:1883)
+// and the Control Station app UI (ws://127.0.0.1:9001). Same rules as shared/bus/bus.py (IF-03):
 // - envelope: timestamp_s (wall clock at start + performance.now()), seq per topic, version, writer
 // - QoS and retained flag from shared/interfaces/topics.json
 // - schema check on publish and on receive; repeated QoS 1 deliveries dropped
@@ -43,7 +43,7 @@ export function ageS(msg: Message, now = nowS()): number {
 
 // ------------------------------------------------------------------ validation
 const ENVELOPE_FIELDS = ["timestamp_s", "seq", "version", "writer"];
-const ajv = new Ajv2020({ allErrors: false });
+const ajv = new Ajv2020({ allErrors: false, allowUnionTypes: true });
 ajv.addKeyword("x-interface");
 for (const schema of Object.values((bundle as { schemas: Record<string, object> }).schemas)) ajv.addSchema(schema);
 const validators = new Map<string, ValidateFunction>();
