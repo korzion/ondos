@@ -56,6 +56,17 @@ A cinematic, hardware-led interpretation that presents Ondos as a complete physi
 
 The design is described in the *Ondos Module Design* document (CSE396 Group 2).
 
+## Getting started (developers)
+
+```
+pip install -e .                              # Python 3.11: shared library (bus, interfaces, replay, tests)
+npm install                                   # TypeScript parts of shared/
+mosquitto -c shared/bus/mosquitto.conf        # local broker for standalone work
+python <module>/run_test.py --list            # tests of a module
+```
+
+Topic names, message fields and packet layouts come only from [`shared/interfaces/`](shared/interfaces/).
+
 ## Project status
 
 Ondos is an evolving prototype developed by **Korzion** for **CSE 396 at Gebze Technical University**. The repository documents the work in progress across hardware, embedded systems, computer vision, simulation, and AI.

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/ai.target_tilt.schema.json",
+  "title": "ai/target_tilt",
+  "description": "Payload of ai/target_tilt (IF-06). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-06",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "target_tilt_x_deg": {
+      "type": "number"
+    },
+    "target_tilt_y_deg": {
+      "type": "number"
+    },
+    "model_version": {
+      "type": "string"
+    },
+    "ball_seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "maze_id": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "ball_seq",
+    "maze_id",
+    "model_version",
+    "target_tilt_x_deg",
+    "target_tilt_y_deg"
+  ],
+  "unevaluatedProperties": false
+}

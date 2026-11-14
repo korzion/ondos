@@ -1,0 +1,26 @@
+{
+  "$comment": "Configuration keys (IF-03) with their owning program and the variable names of sections A.7, B.7, C.7, D.7 and E.7. Names are fixed; values, limits and live flags come from each module's variables_spec at runtime.",
+  "keys": {
+    "platform": {"owner": "bridge", "section": "A.7", "names": [
+      "max_tilt_deg", "max_tilt_speed_deg_s", "glove_gain", "glove_deadzone_deg", "serial_port"]},
+    "glove": {"owner": "bridge", "section": "B.7", "names": [
+      "is_vibration_enabled", "vibration_intensity_pct", "filter_strength"]},
+    "vision": {"owner": "vision", "section": "C.7", "names": [
+      "camera_index",
+      "ball_h_min", "ball_h_max", "ball_s_min", "ball_s_max", "ball_v_min", "ball_v_max",
+      "exit_h_min", "exit_h_max", "exit_s_min", "exit_s_max", "exit_v_min", "exit_v_max",
+      "ball_diameter_mm", "exposure", "gain", "lost_timeout_ms", "wall_hit_margin_mm", "filter_noise",
+      "image_rate_hz", "edit_clear_time_s", "edit_detection_enabled", "edit_min_area_mm2",
+      "edit_enter_frames", "occluded_frames", "edit_rate_hz", "wall_hit_min_speed_mm_s"]},
+    "ai": {"owner": "auto_controller", "section": "D.7", "names": [
+      "model_version", "action_smoothing_pct", "tilt_scale_pct"]},
+    "pid": {"owner": "auto_controller", "section": "D.7", "names": [
+      "pid_kp_deg_per_mm", "pid_ki_deg_per_mm_per_s", "pid_kd_deg_per_mm_s", "pid_integral_limit_deg"]},
+    "game": {"owner": "game_manager", "section": "E.7", "names": [
+      "not_moving_time_s", "not_moving_radius_mm", "away_hold_time_s", "warning_cooldown_s",
+      "ball_lost_pause_s", "glove_lost_pause_s", "exit_hold_frames", "time_limit_s"]},
+    "cs": {"owner": "cs_app", "section": "E.7", "names": [
+      "plot_window_s", "plot_rate_hz", "maze_view_rate_hz", "health_check_rate_hz", "log_max_lines",
+      "recording_folder", "recording_tail_s"]}
+  }
+}

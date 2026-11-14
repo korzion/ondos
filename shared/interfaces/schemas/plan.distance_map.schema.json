@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/plan.distance_map.schema.json",
+  "title": "plan/distance_map",
+  "description": "Payload of plan/distance_map (IF-04). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-04",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "maze_id": {
+      "type": "string"
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cols": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": -1
+        }
+      },
+      "description": "BFS steps to the exit; -1 = unreachable"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "cols",
+    "maze_id",
+    "rows",
+    "steps"
+  ],
+  "unevaluatedProperties": false
+}

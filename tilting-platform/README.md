@@ -15,7 +15,7 @@ Team: `@korzion/tilting-platform` · Design: *Ondos Module Design*, Part II-A
 - Platform bridge (Python): PlatformBridge, MQTTHandler
 - Serial test script for the Dec 4 demo
 
-Serial packet headers (IF-02) in `shared/` are owned by A.
+Serial packet headers (IF-02) in `shared/` are owned by A. Firmware and bridge use the generated packet definitions in `shared/firmware/include/` (C++) and `shared/protocol/` (Python) instead of writing packet structs by hand; the byte layout is a DRAFT to be confirmed by A and B (`shared/interfaces/README.md`).
 
 The internal folder layout of this module is decided by the module team.
 

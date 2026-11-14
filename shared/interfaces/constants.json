@@ -1,0 +1,15 @@
+{
+  "$comment": "Fixed numbers from the design document (State: names, types, units, topics and the safety timeouts are fixed). Every other number is a starting value and lives in a module's variables_spec, not here.",
+  "constants": {
+    "COMMAND_TIMEOUT_MS": {"value": 200, "source": "A.1, A-R5: ESP32 levels the plate after no valid TargetTilt"},
+    "HOST_STATE_TIMEOUT_MS": {"value": 300, "source": "A.8, IF-02: laptop lost (no HostState); also the gate age of game/state"},
+    "GAME_STATE_MAX_AGE_MS": {"value": 300, "source": "IF-02 The gate, IF-05 readers"},
+    "GLOVE_DATA_LOSS_MS": {"value": 300, "source": "IF-01 GloveData lost after 300 ms"},
+    "GAME_INFO_LOSS_MS": {"value": 1000, "source": "IF-01 GameInfo max delay; glove plays 'disconnected'"},
+    "CONTROLLER_INPUT_MAX_AGE_MS": {"value": 100, "source": "IF-06: ball and platform data expire after 100 ms"},
+    "BROKER_HOST": {"value": "127.0.0.1", "source": "IF-03 (localhost only; IPv4 address, because on Windows \"localhost\" tries IPv6 ::1 first and Mosquitto listens on 127.0.0.1)"},
+    "BROKER_TCP_PORT": {"value": 1883, "source": "IF-03"},
+    "BROKER_WS_PORT": {"value": 9001, "source": "IF-03"},
+    "RECORDING_FORMAT_VERSION": {"value": 1, "source": "IF-09"}
+  }
+}

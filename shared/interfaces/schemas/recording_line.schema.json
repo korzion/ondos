@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/recording_line.schema.json",
+  "title": "Recording file, message line (IF-09)",
+  "type": "object",
+  "properties": {
+    "t_recv_s": {
+      "type": "number"
+    },
+    "topic": {
+      "type": "string"
+    },
+    "msg": {
+      "description": "The message exactly as published (envelope included); a bool for sys/online/*"
+    }
+  },
+  "required": [
+    "t_recv_s",
+    "topic",
+    "msg"
+  ],
+  "additionalProperties": false
+}

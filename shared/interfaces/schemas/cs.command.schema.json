@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/cs.command.schema.json",
+  "title": "cs/command",
+  "description": "Payload of cs/command (IF-07). mode is set only for set_mode, file and speed only for replay; otherwise null (D4).",
+  "x-interface": "IF-07",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "cmd": {
+            "const": "set_mode"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "$ref": "common.schema.json#/$defs/mode"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "cmd": {
+            "const": "replay"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "speed": {
+            "$ref": "common.schema.json#/$defs/replay_speed"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "cmd": {
+      "$ref": "common.schema.json#/$defs/command"
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/mode"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "file": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "speed": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/replay_speed"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "cmd",
+    "file",
+    "mode",
+    "speed"
+  ],
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/maze_file.schema.json",
+  "title": "Maze file shared/mazes/<maze_id>.json (IF-04)",
+  "description": "Same fields as vision/maze, without the envelope and source; start_cell may be left out.",
+  "type": "object",
+  "properties": {
+    "maze_id": {
+      "type": "string"
+    },
+    "cell_size_mm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cols": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "origin_x_mm": {
+      "type": "number"
+    },
+    "origin_y_mm": {
+      "type": "number"
+    },
+    "walls": {
+      "$ref": "common.schema.json#/$defs/walls"
+    },
+    "wall_thickness_mm": {
+      "type": "number"
+    },
+    "wall_height_mm": {
+      "type": "number"
+    },
+    "start_cell": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/cell"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "exit_cell": {
+      "$ref": "common.schema.json#/$defs/cell"
+    },
+    "exit_x_mm": {
+      "type": "number"
+    },
+    "exit_y_mm": {
+      "type": "number"
+    },
+    "exit_radius_mm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "ball_diameter_mm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  },
+  "required": [
+    "ball_diameter_mm",
+    "cell_size_mm",
+    "cols",
+    "exit_cell",
+    "exit_radius_mm",
+    "exit_x_mm",
+    "exit_y_mm",
+    "maze_id",
+    "origin_x_mm",
+    "origin_y_mm",
+    "rows",
+    "wall_height_mm",
+    "wall_thickness_mm",
+    "walls"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/vision.event.schema.json",
+  "title": "vision/event",
+  "description": "Payload of vision/event (IF-04). wall_side and impact_speed_mm_s are null for kinds other than wall_hit.",
+  "x-interface": "IF-04",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "kind": {
+      "$ref": "common.schema.json#/$defs/event_kind"
+    },
+    "cell": {
+      "$ref": "common.schema.json#/$defs/cell"
+    },
+    "x_mm": {
+      "type": "number"
+    },
+    "y_mm": {
+      "type": "number"
+    },
+    "wall_side": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/wall_side"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "impact_speed_mm_s": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "cell",
+    "impact_speed_mm_s",
+    "kind",
+    "wall_side",
+    "x_mm",
+    "y_mm"
+  ],
+  "unevaluatedProperties": false
+}

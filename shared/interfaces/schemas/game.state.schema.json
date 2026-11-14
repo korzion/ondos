@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/game.state.schema.json",
+  "title": "game/state",
+  "description": "Payload of game/state (IF-05). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-05",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "state": {
+      "$ref": "common.schema.json#/$defs/state"
+    },
+    "mode": {
+      "$ref": "common.schema.json#/$defs/mode"
+    },
+    "game_id": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/game_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "maze_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "elapsed_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "cell": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/cell"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "distance_to_exit_cells": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "progress_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "result": {
+      "$ref": "common.schema.json#/$defs/result"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "cell",
+    "distance_to_exit_cells",
+    "elapsed_s",
+    "game_id",
+    "maze_id",
+    "mode",
+    "progress_pct",
+    "result",
+    "state"
+  ],
+  "unevaluatedProperties": false
+}

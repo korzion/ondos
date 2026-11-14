@@ -1,0 +1,41 @@
+name: shared checks
+
+on:
+  pull_request:
+    paths: ["shared/**", "pyproject.toml", "package.json", "package-lock.json", "tsconfig.json", ".github/workflows/shared-checks.yml"]
+  push:
+    branches: [main]
+    paths: ["shared/**", "pyproject.toml", "package.json", "package-lock.json", "tsconfig.json"]
+
+jobs:
+  python:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Mosquitto (Linux; the bus tests are skipped without it)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mosquitto
+      - run: pip install -e ".[dev]"
+      - name: Generated files are up to date
+        run: python shared/interfaces/gen.py --check
+      - run: python -m pytest -q
+
+  typescript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sudo apt-get update && sudo apt-get install -y mosquitto
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/vision.edit_state.schema.json",
+  "title": "vision/edit_state",
+  "description": "Payload of vision/edit_state (IF-04). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-04",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "state": {
+      "$ref": "common.schema.json#/$defs/edit_state"
+    },
+    "maze_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "game_id": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/game_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/edit_reason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "game_id",
+    "maze_id",
+    "reason",
+    "state"
+  ],
+  "unevaluatedProperties": false
+}

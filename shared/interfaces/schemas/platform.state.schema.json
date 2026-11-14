@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ondos.local/schemas/platform.state.schema.json",
+  "title": "platform/state",
+  "description": "Payload of platform/state (IF-02). Envelope fields come from envelope.schema.json.",
+  "x-interface": "IF-02",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "tilt_x_deg": {
+      "type": "number"
+    },
+    "tilt_y_deg": {
+      "type": "number"
+    },
+    "applied_tilt_x_deg": {
+      "type": "number"
+    },
+    "applied_tilt_y_deg": {
+      "type": "number"
+    },
+    "source": {
+      "$ref": "common.schema.json#/$defs/platform_source"
+    },
+    "mode": {
+      "$ref": "common.schema.json#/$defs/mode"
+    },
+    "mode_button_presses": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "is_e_stop": {
+      "type": "boolean"
+    },
+    "is_laptop_connected": {
+      "type": "boolean"
+    },
+    "is_glove_connected": {
+      "type": "boolean"
+    },
+    "fault": {
+      "$ref": "common.schema.json#/$defs/fault"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "applied_tilt_x_deg",
+    "applied_tilt_y_deg",
+    "fault",
+    "is_e_stop",
+    "is_glove_connected",
+    "is_laptop_connected",
+    "mode",
+    "mode_button_presses",
+    "source",
+    "tilt_x_deg",
+    "tilt_y_deg"
+  ],
+  "unevaluatedProperties": false
+}
