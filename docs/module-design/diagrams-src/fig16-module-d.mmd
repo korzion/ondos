@@ -1,0 +1,20 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  C["C Vision"]:::C
+  A["A Platform"]:::A
+  E["E Control Station"]:::E
+  RT["<b>Runtime</b> (station laptop)<br/>AutoControllerApp: checks inputs and mode<br/>ObservationBuilder<br/>AIController (trained model)<br/>PIDController (anti-windup)<br/>OutputShaper (limits, smoothing)"]:::D
+  LE["<b>Learning</b> (offline)<br/>RecordingReader<br/>TrainEnv (physics library)<br/>BCTrainer, PPOTrainer<br/>Evaluator (AI vs PID)"]:::D
+  C -->|"ball, maze, route"| RT
+  A -->|"platform/state"| RT
+  E -->|"game/state, settings"| RT
+  RT -->|"ai/target_tilt or<br/>control/target_tilt"| A
+  RT -->|"ai/status"| E
+  E -.->|"recordings"| LE
+  LE -.->|"model file"| RT
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

@@ -1,0 +1,16 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+sequenceDiagram
+  participant O as Operator
+  participant A as A Platform ESP32
+  participant BR as A bridge
+  participant E as E Control Station
+  O->>A: presses the E-stop button
+  A->>A: NC contact cuts servo power (hardware)
+  A->>BR: is_e_stop = true
+  BR->>E: platform/state is_e_stop
+  E->>E: GameManager → e_stop, game aborted
+  O->>E: app E-stop (software)
+  E->>BR: cs/command e_stop
+  BR->>A: level and lock
+  Note over A,E: clear_e_stop → setup (button released)
+  Note over A,BR: laptop lost: a glove game keeps<br/>following the hand, otherwise level<br/>until one short button press

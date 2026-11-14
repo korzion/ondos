@@ -1,0 +1,13 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+sequenceDiagram
+  participant E as E Recorder
+  participant RP as Replay tool
+  participant L as D Learning (offline)
+  participant M as D AI Controller
+  E->>E: game ends (finished or e_stop)
+  E->>E: Recorder closes the game file
+  E->>RP: recording file
+  RP->>RP: plots, 2D maze, 3D Twin (replay mode, same broker)
+  E->>L: recording files
+  L->>L: training rows, imitation, reinforcement learning
+  L->>M: model file

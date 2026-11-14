@@ -1,0 +1,18 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  G["<b>Glove ESP32-C3</b> (on the hand)<br/>B firmware<br/>IMU, vibration motors, battery"]:::B
+  P["<b>Platform ESP32-S3</b> (in the platform)<br/>A firmware<br/>servos, plate IMU, limits, command timeout,<br/>watchdog, E-stop button"]:::A
+  L["<b>Station laptop</b><br/>MQTT broker<br/>A platform bridge<br/>C Vision<br/>D AI and PID Controllers<br/>E app, GameManager, Recorder"]:::E
+  cam["<b>USB camera</b><br/>above the maze"]:::X
+  T["<b>Team laptop</b> (offline)<br/>D Learning"]:::D
+  G <-->|"ESP-NOW"| P
+  P <-->|"USB serial"| L
+  cam -->|"USB"| L
+  L -.->|"recording files"| T
+  T -.->|"model files"| L
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

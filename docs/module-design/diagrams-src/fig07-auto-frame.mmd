@@ -1,0 +1,18 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+sequenceDiagram
+  participant A as A Platform (ESP32 + bridge)
+  participant C as C Vision
+  participant D as D Auto Controller
+  participant E as E Control Station
+  C->>D: vision/ball (seq n), plan/route (ball_seq n)
+  C->>E: vision/ball, plan/route
+  D->>D: check state, mode, freshness, maze_id
+  D->>A: ai/target_tilt or control/target_tilt (ball_seq n)
+  alt gate open (playing, selected mode, game/state < 300 ms)
+    A->>A: bridge → TargetTilt → ESP32 → servos
+  else gate closed
+    A->>A: nothing forwarded, ESP32 command timeout levels the plate
+  end
+  A->>D: platform/state (measured tilt)
+  A->>E: platform/state
+  D->>E: ai/status

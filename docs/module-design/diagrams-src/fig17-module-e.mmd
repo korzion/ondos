@@ -1,0 +1,24 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart TB
+  A["A Platform"]:::A
+  C["C Vision"]:::C
+  D["D Auto Controller"]:::D
+  MQ(["MQTT broker"]):::X
+  GM["<b>GameManager</b> (background)<br/>state, mode, progress,<br/>finish, warnings"]:::E
+  APP["<b>Desktop app</b> (TypeScript)<br/>tabs: Start, Plots, Camera, Variables<br/>3D Twin (Three.js), topic health, Replay"]:::E
+  REC["<b>Recorder</b> (background)<br/>one file per game"]:::E
+  A <--> MQ
+  C <--> MQ
+  D <--> MQ
+  MQ -->|"inputs"| GM
+  GM -->|"game/state, game/warning"| MQ
+  MQ -->|"telemetry"| APP
+  APP -->|"cs/command, cs/variables"| MQ
+  MQ -->|"all topics except vision/image"| REC
+  REC -->|"files for Replay"| APP
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

@@ -1,0 +1,18 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+stateDiagram-v2
+  [*] --> setup
+  setup --> ready: valid maze and route
+  ready --> setup: read_maze
+  ready --> playing: start
+  playing --> paused: pause, hand in playfield,<br/>data lost
+  paused --> paused: read_maze
+  paused --> playing: resume (valid route, fresh data)
+  playing --> finished: ball on exit, time limit, stop
+  paused --> finished: stop
+  finished --> ready: new_game
+  e_stop --> setup: clear_e_stop
+  note right of e_stop
+    Entered from any state on the
+    E-stop button or command.
+    A running game ends as aborted.
+  end note

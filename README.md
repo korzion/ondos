@@ -45,15 +45,16 @@ A cinematic, hardware-led interpretation that presents Ondos as a complete physi
 
 ## System
 
-| Module | Role |
-| --- | --- |
-| [`platform/`](platform/) | Tilting maze platform, mechanics, and motion control |
-| [`glove/`](glove/) | Wearable sensing and haptic interaction |
-| [`vision/`](vision/) | Camera-based ball and maze tracking |
-| [`simulator/`](simulator/) | 3D simulation and digital twin |
-| [`path-planning/`](path-planning/) | Maze representation and route planning |
-| [`ai/`](ai/) | Intelligent control and decision-making |
-| [`control-station/`](control-station/) | System orchestration and operator interface |
+| Module | Folder | Role |
+| --- | --- | --- |
+| A Tilting Platform | [`tilting-platform/`](tilting-platform/) | Two-axis tilting maze, servos, IMU, safety; platform bridge to the bus |
+| B Glove Controller | [`glove-controller/`](glove-controller/) | Hand tilt over ESP-NOW and haptic warnings |
+| C Vision | [`vision/`](vision/) | Ball tracking, maze reading, hand detection and route planning |
+| D Auto Controller | [`auto-controller/`](auto-controller/) | AI and PID controllers; offline Learning (AI parts in `auto-controller/ai/`) |
+| E Control Station | [`control-station/`](control-station/) | GameManager, operator app with plots, camera and 3D Twin, Recorder |
+| Shared | [`shared/`](shared/) | Interfaces (topic names, schemas), bus helpers, mazes, replay tool, test base |
+
+The design is described in the *Ondos Module Design* document (CSE396 Group 2).
 
 ## Project status
 

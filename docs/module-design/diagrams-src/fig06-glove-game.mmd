@@ -1,0 +1,20 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+sequenceDiagram
+  participant B as B Glove
+  participant A as A Platform (ESP32 + bridge)
+  participant C as C Vision
+  participant E as E Control Station
+  loop 50 Hz
+    B->>A: GloveData (hand tilt)
+    A->>A: map hand tilt → plate tilt (within limits)
+    A->>E: platform/state, glove/state
+  end
+  loop every camera frame
+    C->>E: vision/ball, plan/route
+    E->>E: progress, warnings, exit check
+  end
+  E->>A: game/warning (e.g. not_moving)
+  A->>B: Haptic (pattern, intensity)
+  C->>E: is_on_exit for exit_hold_frames frames
+  E->>A: game/state finished
+  A->>A: level the plate

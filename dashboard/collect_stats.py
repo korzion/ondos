@@ -22,15 +22,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Top-level folder -> module name shown on the page.
 MODULES = {
-    "platform": "A · Tilting Platform",
-    "glove": "B · Glove",
-    "vision": "C · Vision System",
-    "simulator": "D · Simulator & 3D Twin",
-    "path-planning": "E · Path Planning & Control",
-    "ai": "F · AI",
-    "control-station": "G · Control Station",
+    "tilting-platform": "A · Tilting Platform",
+    "glove-controller": "B · Glove Controller",
+    "vision": "C · Vision",
+    "auto-controller": "D · Auto Controller",
+    "control-station": "E · Control Station",
     "shared": "Shared",
     "docs": "Docs",
+    # Folders before the Nov 2026 restructuring, so older commits are still counted
+    "platform": "A · Tilting Platform",
+    "glove": "B · Glove Controller",
+    "ai": "D · Auto Controller",
+    "simulator": "Earlier modules",
+    "path-planning": "Earlier modules",
 }
 OTHER = "Other"
 
@@ -247,7 +251,7 @@ def main():
     for m in members:
         person[m["name"]]
 
-    module_names = [m for m in list(MODULES.values()) + [OTHER] if m in module_totals]
+    module_names = [m for m in dict.fromkeys(list(MODULES.values()) + [OTHER]) if m in module_totals]
     out = {
         "repo": gh.repo or os.path.basename(os.getcwd()),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),

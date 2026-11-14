@@ -1,0 +1,37 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+sequenceDiagram
+  participant O as Operator
+  participant C as C Vision
+  participant E as E Control Station
+  participant D as D Auto Controller
+  participant A as A Platform
+  O->>C: hand enters the playfield (or hides markers)
+  C->>E: vision/edit_state hand_present / occluded
+  E->>A: game/state paused
+  E->>D: game/state paused
+  D->>D: stop output
+  A->>A: level the plate
+  O->>O: moves walls or swaps the plate
+  Note over C: still for edit_clear_time_s and plate level
+  C->>E: edit_state rescanning
+  C->>C: two scans agree and pass validation
+  alt walls changed
+    C->>E: vision/maze, plan/distance_map (new maze_id)
+  else walls unchanged
+    C->>E: same maze_id
+  end
+  C->>E: plan/route from the current ball cell
+  alt route valid
+    C->>E: edit_state clear
+    E->>O: "Maze OK – press Resume"
+    O->>E: Resume
+    E->>A: game/state playing (same game_id)
+    E->>D: game/state playing
+  else no_path
+    C->>E: edit_state clear, reason no_path
+    E->>O: "No path to the exit", Resume disabled
+  else scan failed
+    C->>E: edit_state not clear, reason scan_invalid / exit_hidden / ...
+    E->>O: reason shown, game stays paused
+    Note over O,E: manual retry: Read maze, then Resume
+  end
