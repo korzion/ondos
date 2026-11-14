@@ -128,7 +128,12 @@ export class Bus {
         will: { topic: sysOnline(this.program), payload: "false", qos: 1, retain: true },
       });
       this.client = client;
-      const timer = setTimeout(() => reject(new Error(`no broker at ${this.url}`)), timeoutMs);
+      const timer = setTimeout(() => {
+        // Stop the reconnect loop, otherwise the process never exits (E.8 reconnects only after a first connect).
+        client.end(true);
+        this.client = null;
+        reject(new Error(`no broker at ${this.url}`));
+      }, timeoutMs);
       client.on("connect", () => {
         client.publish(sysOnline(this.program), "true", { qos: 1, retain: true });
         for (const s of this.subs) client.subscribe(s.pattern, { qos: 1 });

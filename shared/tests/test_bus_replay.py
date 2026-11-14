@@ -15,19 +15,24 @@ pytestmark = pytest.mark.skipif(shutil.which("mosquitto") is None, reason="needs
 
 
 @pytest.fixture()
-def broker(tmp_path):
+def broker():
+    # No config file: Ubuntu's AppArmor profile lets mosquitto read configs only from /etc/mosquitto.
+    # Without one, mosquitto 2 runs in local-only mode (127.0.0.1, anonymous), which is what the tests need.
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    conf = tmp_path / "m.conf"
-    conf.write_text(f"listener {port} 127.0.0.1\nallow_anonymous true\npersistence false\n")
-    p = subprocess.Popen(["mosquitto", "-c", str(conf)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(50):
+    p = subprocess.Popen(["mosquitto", "-p", str(port)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for _ in range(100):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=0.1).close()
             break
         except OSError:
+            if p.poll() is not None:
+                pytest.fail("mosquitto did not start:\n" + p.stdout.read().decode(errors="replace"))
             time.sleep(0.05)
+    else:
+        p.kill()
+        pytest.fail("mosquitto did not open its port in 5 s")
     yield port
     p.terminate()
     p.wait()

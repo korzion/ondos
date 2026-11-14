@@ -3,9 +3,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Bus, ValidationError, validate, type Message, type Payload } from "./bus";
 import { GAME_STATE, VISION_BALL } from "../topics";
 
@@ -30,12 +27,17 @@ test("validate accepts a good message and rejects a bad one", () => {
   assert.throws(() => validate("cs/variables/platform", { timestamp_s: 1, seq: 0, version: 1, writer: "cs_app", max_tilt: 3 }), ValidationError);
 });
 
+test("connect fails cleanly when there is no broker", async () => {
+  const bus = new Bus("vision", "mqtt://127.0.0.1:1");
+  await assert.rejects(bus.connect(1000), /no broker/); // and the process can exit (no reconnect loop left)
+});
+
 test("publish / subscribe through mosquitto", { skip: !hasMosquitto }, async () => {
   const port = await freePort();
-  const dir = mkdtempSync(join(tmpdir(), "ondos-"));
-  writeFileSync(join(dir, "m.conf"), `listener ${port} 127.0.0.1\nallow_anonymous true\npersistence false\n`);
-  const broker = spawn("mosquitto", ["-c", join(dir, "m.conf")], { stdio: "ignore" });
-  await sleep(300);
+  // No config file: Ubuntu's AppArmor profile lets mosquitto read configs only from /etc/mosquitto.
+  // Without one, mosquitto 2 runs in local-only mode (127.0.0.1, anonymous).
+  const broker = spawn("mosquitto", ["-p", String(port)], { stdio: "ignore" });
+  await sleep(500);
   try {
     const got: [string, Payload][] = [];
     const obs = new Bus("cs_app", `mqtt://127.0.0.1:${port}`);
