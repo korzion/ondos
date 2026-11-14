@@ -1,0 +1,23 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart TB
+  E["<b>E Control Station</b><br/>GameManager, app, 3D Twin, Recorder, Replay"]:::E
+  C["<b>C Vision</b><br/>ball, maze, route, hand detection"]:::C
+  D["<b>D Auto Controller</b><br/>AI and PID Controllers, Learning"]:::D
+  A["<b>A Tilting Platform</b><br/>servos, IMU, limits, E-stop, bridge"]:::A
+  B["<b>B Glove Controller</b><br/>hand tilt, vibration"]:::B
+  E -->|"commands, settings"| C
+  C -->|"ball, maze, route, edit state"| E
+  E -->|"game state, settings"| D
+  D -->|"AI status"| E
+  E -->|"game state, commands"| A
+  A -->|"platform and glove state"| E
+  C -->|"ball, route"| D
+  D -->|"target tilt"| A
+  A -->|"measured tilt"| D
+  A <-->|"ESP-NOW: hand tilt, haptics"| B
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

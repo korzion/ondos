@@ -1,0 +1,30 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  E["E Control Station"]:::E
+  D["D Auto Controller"]:::D
+  subgraph C["C Vision (laptop, Python + OpenCV)"]
+    direction TB
+    cam["USB camera"]:::X
+    fg["FrameGrabber"]:::C
+      bc["BoardCalibrator<br/>ArUco markers → board frame"]:::C
+    bt["BallTracker<br/>position, speed"]:::C
+    ev["EventDetector<br/>exit, wall hits"]:::C
+    ed["EditDetector<br/>hand in playfield, 10 Hz"]:::C
+    mr["MazeReader + MazeGrid<br/>walls, start, exit"]:::C
+    pp["PathPlanner<br/>distance map, route"]:::C
+    vn["VisionNode<br/>main loop, publishing"]:::C
+    fg --> bc --> bt --> ev --> vn
+    bc --> mr --> pp --> vn
+    bc --> ed --> vn
+    bt --> pp
+  end
+  cam --> fg
+  E -->|"cs/command, cs/variables/vision,<br/>game/state"| vn
+  vn -->|"vision/*, plan/*"| E
+  vn -->|"vision/ball, vision/maze, plan/*"| D
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

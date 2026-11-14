@@ -19,6 +19,7 @@ venv/
 node_modules/
 dist/
 build/
+!docs/module-design/build/
 npm-debug.log*
 
 # Embedded (PlatformIO / Arduino)
@@ -27,17 +28,6 @@ npm-debug.log*
 *.hex
 *.bin
 
-# Unity
-[Ll]ibrary/
-[Tt]emp/
-[Oo]bj/
-[Bb]uild/
-[Bb]uilds/
-[Ll]ogs/
-[Uu]ser[Ss]ettings/
-*.csproj
-*.sln
-
 # Large media and exports — share these via Drive, not git
 *.mp4
 *.mov
@@ -45,6 +35,11 @@ npm-debug.log*
 *.zip
 *.rar
 *.7z
+# Small model files of the AI (D.5) are kept in the repo
+!auto-controller/ai/models/*.zip
+
+# Game recordings (IF-09); shared on the team Drive, a few samples go to shared/samples/
+recordings/
 
 # Curated README concept films (small, web-optimized H.264/AAC files)
 !docs/media/ondos-concept-01-blueprint.mp4

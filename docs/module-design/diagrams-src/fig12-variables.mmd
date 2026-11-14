@@ -1,0 +1,15 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  m["<b>Each module</b><br/>A, B (via A), C, D, E"]:::X
+  spec["&lt;key&gt;/variables_spec<br/>name, type, unit, range,<br/>live or next, current value"]:::X
+  ui["<b>E Control Station</b><br/>builds a slider, switch<br/>or choice for each variable"]:::E
+  cmd["cs/variables/&lt;key&gt;<br/>new value"]:::X
+  m -->|"publishes (retained)"| spec --> ui
+  ui -->|"operator changes a value"| cmd --> m
+  m -.->|"clamps, applies, publishes<br/>the value it really uses"| spec
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

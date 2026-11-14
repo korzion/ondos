@@ -1,0 +1,21 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+sequenceDiagram
+  participant A as A Platform (ESP32 + bridge)
+  participant C as C Vision
+  participant D as D Auto Controller
+  participant E as E Control Station
+  Note over A,E: programs connect to the broker
+  E->>E: GameManager enters setup
+  E->>C: cs/command calibrate_camera, read_maze
+  C->>E: vision/maze, plan/distance_map (retained)
+  C->>D: vision/maze, plan/distance_map
+  loop every camera frame
+    C->>D: vision/ball, plan/route
+    C->>E: vision/ball, plan/route
+  end
+  E->>E: valid maze, path to exit, distance map → ready
+  E->>E: Recorder opens <game_id>.jsonl
+  E->>E: operator selects the mode
+  E->>A: game/state (ready, mode)
+  Note over E: ball in the start cell, playfield clear
+  E->>A: start → game/state (playing)

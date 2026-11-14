@@ -1,0 +1,19 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  B["B Glove"]:::B
+  ESP["<b>Platform ESP32</b> (C++)<br/>glove link (ESP-NOW)<br/>tilt control and glove mapping<br/>plate IMU<br/>servo PWM<br/>limits, command timeout,<br/>watchdog, E-stop"]:::A
+  BR["<b>Platform bridge</b> (laptop, Python)<br/>serial link (COBS + CRC-16)<br/>gate: mode, state, freshness,<br/>maze_id, version 2, not replay<br/>MQTT client"]:::A
+  D["D Auto Controller"]:::D
+  E["E Control Station"]:::E
+  B <-->|"IF-01"| ESP
+  ESP <-->|"USB serial (IF-02)"| BR
+  D -->|"target tilts"| BR
+  E -->|"game/state, commands, settings"| BR
+  BR -->|"platform/state, glove/state"| E
+  BR -->|"platform/state"| D
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

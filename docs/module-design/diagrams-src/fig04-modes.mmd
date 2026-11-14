@@ -1,0 +1,20 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  gl["<b>Glove mode</b><br/>B hand tilt"]:::B
+  ai["<b>AI mode</b><br/>D AI Controller"]:::D
+  pid["<b>PID mode</b> (wire value simple)<br/>D PID Controller"]:::D
+  gm["<b>E GameManager</b><br/>game/state: state, mode"]:::E
+  gate{"<b>A bridge gate</b><br/>forward only the stream<br/>of the selected mode<br/>while playing"}:::A
+  esp["<b>A platform ESP32</b><br/>limits, command timeout,<br/>watchdog, E-stop → servos"]:::A
+  gl -->|"ESP-NOW, mapped on the ESP32"| esp
+  ai -->|"ai/target_tilt"| gate
+  pid -->|"control/target_tilt"| gate
+  gm -->|"game/state"| gate
+  gm -->|"mode via HostState (serial)"| esp
+  gate -->|"TargetTilt (serial)"| esp
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

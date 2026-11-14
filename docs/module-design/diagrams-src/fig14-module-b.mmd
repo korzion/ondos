@@ -1,0 +1,21 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  subgraph B["B Glove Controller (glove ESP32-C3)"]
+    direction TB
+    imu["MPU6050 IMU"]:::B
+    f["ImuFilter<br/>hand tilt, calibration"]:::B
+    l["EspNowLink<br/>50 Hz GloveData, 1 Hz GloveStatus"]:::B
+    h["HapticController<br/>vibration patterns"]:::B
+    mot["3 vibration motors"]:::B
+    bat["Li-ion battery + charger"]:::B
+    imu --> f --> l
+    l --> h --> mot
+  end
+  A["A Platform ESP32"]:::A
+  l <-->|"GloveData, GloveStatus ⇄<br/>GameInfo, Haptic (IF-01)"| A
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a

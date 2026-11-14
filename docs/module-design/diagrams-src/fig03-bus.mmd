@@ -1,0 +1,29 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial','fontSize':'15px','primaryColor':'#ffffff','primaryBorderColor':'#334155','lineColor':'#334155','textColor':'#0f172a'}}}%%
+flowchart LR
+  subgraph W["Writes"]
+    wa["<b>A bridge</b><br/>platform/state, glove/state<br/>platform and glove variables_spec"]:::A
+    wc["<b>C Vision</b><br/>vision/ball, vision/maze<br/>vision/edit_state, vision/status<br/>vision/event, vision/image<br/>plan/distance_map, plan/route"]:::C
+    wd["<b>D Auto Controller</b><br/>ai/target_tilt, control/target_tilt<br/>ai/status, ai and pid variables_spec"]:::D
+    we["<b>E Control Station</b><br/>game/state, game/warning<br/>cs/command, cs/variables/*<br/>game and cs variables_spec"]:::E
+  end
+  mq(["MQTT broker<br/>one live writer per topic<br/>every program: sys/online/*"]):::X
+  subgraph R["Reads"]
+    ra["<b>A bridge</b><br/>target tilts, game/state, game/warning<br/>cs/command, cs/variables/platform, glove"]:::A
+    rc["<b>C Vision</b><br/>game/state, cs/command<br/>cs/variables/vision"]:::C
+    rd["<b>D Auto Controller</b><br/>vision/ball, vision/maze, plan/*<br/>platform/state, platform/variables_spec<br/>game/state, cs/variables/ai, pid"]:::D
+    re["<b>E Control Station</b><br/>all topics (Recorder: all<br/>except vision/image)"]:::E
+  end
+  wa --> mq
+  wc --> mq
+  wd --> mq
+  we --> mq
+  mq --> ra
+  mq --> rc
+  mq --> rd
+  mq --> re
+  classDef A fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef B fill:#ffedd5,stroke:#c2410c,color:#0f172a
+  classDef C fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef D fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+  classDef E fill:#ccfbf1,stroke:#0f766e,color:#0f172a
+  classDef X fill:#f1f5f9,stroke:#64748b,color:#0f172a
