@@ -1,0 +1,2 @@
+# electron-vite build output (node_modules/ and dist/ are ignored by the root .gitignore)
+out/

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      Content Security Policy:
+      - connect-src: the broker's WebSocket port (IF-03), plus the dev server's own socket for hot reload.
+      - 'unsafe-eval': Ajv in shared/bus/bus.ts compiles the message schemas into functions at run time.
+        (Electron prints an "Insecure Content-Security-Policy" warning for it in dev; expected.)
+      - worker-src blob: mqtt.js runs its keep-alive timer in a Web Worker made from a blob.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://127.0.0.1:9001 ws://localhost:*"
+    />
+    <title>Ondos Control Station</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #1b2026;
+        color: #e6e8eb;
+      }
+      #bus-status {
+        padding: 8px 16px;
+      }
+      #bus-status[data-connected="true"] {
+        background: #1f6f43;
+      }
+      #bus-status[data-connected="false"] {
+        background: #8a2b2b;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bus-status" data-connected="false">Bus not connected</div>
+    <main id="app"></main>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>
