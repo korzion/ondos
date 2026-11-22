@@ -159,6 +159,19 @@ class Bus:
         if self._connected.is_set():
             self._client.subscribe(pattern, qos=1)
 
+    def unsubscribe(self, pattern: str, callback: Callback | None = None) -> int:
+        """Stop receiving a pattern. With callback, only that callback is removed; without it, every callback
+        of the pattern. The broker subscription ends when no callback is left for the pattern.
+        Returns how many callbacks were removed."""
+        with self._lock:
+            kept = [s for s in self._subs if not (s[0] == pattern and (callback is None or s[1] == callback))]
+            removed = len(self._subs) - len(kept)
+            self._subs = kept
+            pattern_unused = all(s[0] != pattern for s in kept)
+        if removed and pattern_unused and self._connected.is_set():
+            self._client.unsubscribe(pattern)
+        return removed
+
     def _on_message(self, client, userdata, m: mqtt.MQTTMessage) -> None:
         t_recv = now_s()
         topic = m.topic
