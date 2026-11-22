@@ -142,3 +142,25 @@ def test_replay_skips_topic_whose_writer_is_online(broker, tmp_path):
         r = Replayer(rec, port=broker)
         r.run()
     assert r.sent == 0 and r.skipped == 1
+
+
+def test_unsubscribe_counts_and_stops_delivery(broker):
+    got_a, got_b = [], []
+    on_a = lambda t, m, r: got_a.append(m)
+    on_b = lambda t, m, r: got_b.append(m)
+    obs = Bus("cs_app", port=broker)
+    obs.subscribe("vision/ball", on_a)
+    obs.subscribe("vision/ball", on_b)
+    obs.connect()
+    with Bus("vision", port=broker) as vision:
+        vision.publish(T.VISION_BALL, BALL)
+        time.sleep(0.3)
+        assert obs.unsubscribe("vision/ball", on_a) == 1   # only this callback
+        vision.publish(T.VISION_BALL, BALL)
+        time.sleep(0.3)
+        assert obs.unsubscribe("vision/ball") == 1         # the rest of the pattern
+        assert obs.unsubscribe("vision/ball") == 0         # nothing left
+        vision.publish(T.VISION_BALL, BALL)
+        time.sleep(0.3)
+    obs.close()
+    assert len(got_a) == 1 and len(got_b) == 2
