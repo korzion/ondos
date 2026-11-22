@@ -66,3 +66,40 @@ test("publish / subscribe through mosquitto", { skip: !hasMosquitto }, async () 
     broker.kill();
   }
 });
+
+test("unsubscribe removes one callback or the whole pattern", () => {
+  const bus = new Bus("cs_app", "mqtt://127.0.0.1:1"); // never connected: only the bookkeeping is tested
+  const onA = () => {};
+  const onB = () => {};
+  bus.subscribe("vision/ball", onA);
+  bus.subscribe("vision/ball", onB);
+  assert.equal(bus.unsubscribe("vision/ball", onA), 1);
+  assert.equal(bus.unsubscribe("vision/ball"), 1);
+  assert.equal(bus.unsubscribe("vision/ball"), 0);
+});
+
+test("no messages arrive after unsubscribe", { skip: !hasMosquitto }, async () => {
+  const port = await freePort();
+  const broker = spawn("mosquitto", ["-p", String(port)], { stdio: "ignore" });
+  await sleep(500);
+  try {
+    const got: Payload[] = [];
+    const obs = new Bus("cs_app", `mqtt://127.0.0.1:${port}`);
+    const onBall = (_t: string, m: Payload) => got.push(m);
+    obs.subscribe("vision/ball", onBall);
+    await obs.connect();
+    const vision = new Bus("vision", `mqtt://127.0.0.1:${port}`);
+    await vision.connect();
+    vision.publish(VISION_BALL, BALL);
+    await sleep(300);
+    assert.equal(obs.unsubscribe("vision/ball", onBall), 1);
+    await sleep(200);
+    vision.publish(VISION_BALL, BALL);
+    await sleep(300);
+    await vision.close();
+    await obs.close();
+    assert.equal(got.length, 1);
+  } finally {
+    broker.kill();
+  }
+});

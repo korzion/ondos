@@ -188,6 +188,18 @@ export class Bus {
     this.client?.subscribe(pattern, { qos: 1 });
   }
 
+  /**
+   * Stop receiving a pattern. With cb, only that callback is removed; without it, every callback of the pattern.
+   * The broker subscription ends when no callback is left for the pattern. Returns how many callbacks were removed.
+   */
+  unsubscribe(pattern: string, cb?: Callback): number {
+    const before = this.subs.length;
+    this.subs = this.subs.filter((s) => !(s.pattern === pattern && (cb === undefined || s.cb === cb)));
+    const removed = before - this.subs.length;
+    if (removed > 0 && !this.subs.some((s) => s.pattern === pattern)) this.client?.unsubscribe(pattern);
+    return removed;
+  }
+
   /** Remove the retained message of a topic. */
   clearRetained(topic: string): void {
     this.client?.publish(topic, "", { qos: 1, retain: true });

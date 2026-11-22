@@ -20,6 +20,7 @@ bus = Bus("vision")                       # program id = envelope writer
 bus.subscribe(T.GAME_STATE, on_state)     # on_state(topic, msg, t_recv_s)
 bus.connect()
 bus.publish(T.VISION_BALL, {"x_mm": 1.0, ...})   # only the topic's own fields
+bus.unsubscribe(T.GAME_STATE, on_state)   # one callback; without it, the whole pattern
 ```
 
 Setup once from the repository root: `pip install -e .`
@@ -34,6 +35,7 @@ const bus = new Bus("game_manager");              // ws://127.0.0.1:9001 in the 
 bus.subscribe(VISION_BALL, (topic, msg, tRecvS) => { ... });
 await bus.connect();
 bus.publish(GAME_STATE, { state: "setup", ... });
+bus.unsubscribe(VISION_BALL, onBall);             // one callback; without it, the whole pattern
 ```
 
 Setup once from the repository root: `npm install`. Tests: `npm test`.
