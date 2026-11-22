@@ -1,7 +1,7 @@
 // Electron main process: creates the app window and nothing else.
 // The bus, the tabs and all app logic live in the renderer (src/renderer/app.ts),
 // which connects to the broker over WebSocket (IF-03).
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu } from "electron";
 import { join } from "node:path";
 
 const WINDOW_WIDTH = 1280;
@@ -36,6 +36,11 @@ function create_window(): void {
 }
 
 app.whenReady().then(() => {
+  // The app has no use for Electron's default File/Edit/View menu. It stays in development
+  // only, because its View menu gives reload (Ctrl+R) and the developer tools (Ctrl+Shift+I).
+  if (app.isPackaged) {
+    Menu.setApplicationMenu(null);
+  }
   create_window();
 
   // macOS keeps the app running with no window; clicking the dock icon opens one again.
