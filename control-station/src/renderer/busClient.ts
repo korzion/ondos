@@ -1,6 +1,14 @@
 import { Bus, nowS, Payload, topicMatches, Callback } from "@shared/bus/bus";
 import { topicInfo } from "@shared/topics";
 
+// Pause between first-connect attempts. Bus.connect() already waits up to 5 s for the broker
+// before it gives up, so a short pause is enough to avoid hammering a broker that is starting.
+const CONNECT_RETRY_DELAY_MS = 2000;
+
+function wait_ms(duration_ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, duration_ms));
+}
+
 export class BusClient {
     private bus: Bus;
     private callbacks: Map<string, Set<Callback>> = new Map(); // pattern -> callbacks
@@ -15,6 +23,11 @@ export class BusClient {
     }
 
     publish(topic: string, data: Payload): boolean {
+        if (!this.is_connected()) {
+            console.warn(`publish ${topic} failed: bus is not connected`);
+            return false;
+        }
+
         try {
             this.bus.publish(topic, data);
             return true;
@@ -37,7 +50,7 @@ export class BusClient {
         // give the new subscriber what we already have, so it doesn't start empty
         for (const [topic, msg] of this.latest_messages) {
             if (topicMatches(pattern, topic) && topicInfo(topic).retained) {
-                callback(topic, msg, nowS()); // t_recv_s is now, since we don't know when the message was originally received
+                this.call_safely(callback, topic, msg, nowS()); // t_recv_s is now, since we don't know when the message was originally received
             }
         }
     }
@@ -72,20 +85,19 @@ export class BusClient {
         return this.latest_messages.get(topic) ?? null;
     }
 
-    // Connects to the broker and returns true if successful, false otherwise.
-    connect(url: string): Promise<boolean> {
-        return new Promise((resolve, reject) => {
-            resolve(true);
-            reject(false);
-        });
-    }
-
-    on_connection_change(callback: (is_connected: boolean) => void): void {
-
+    async connect(): Promise<void> {
+        while (!this.is_connected()) {
+            try {
+                await this.bus.connect();
+            } catch (e) {
+                console.warn(`${(e as Error).message}, retrying in ${CONNECT_RETRY_DELAY_MS} ms`);
+                await wait_ms(CONNECT_RETRY_DELAY_MS);
+            }
+        }
     }
 
     is_connected(): boolean {
-        return false;
+        return this.bus.isConnected();
     }
 
     private call_safely(callback: Callback, topic: string, msg: Payload, t_recv_s: number): void {
