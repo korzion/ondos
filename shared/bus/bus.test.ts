@@ -103,3 +103,31 @@ test("no messages arrive after unsubscribe", { skip: !hasMosquitto }, async () =
     broker.kill();
   }
 });
+
+test("isConnected is false before connect", () => {
+  const bus = new Bus("cs_app", "mqtt://127.0.0.1:1");
+  assert.equal(bus.isConnected(), false);
+});
+
+test("isConnected follows the broker", { skip: !hasMosquitto }, async () => {
+  const port = await freePort();
+  let broker = spawn("mosquitto", ["-p", String(port)], { stdio: "ignore" });
+  await sleep(500);
+  const bus = new Bus("cs_app", `mqtt://127.0.0.1:${port}`);
+  const waitFor = async (want: boolean) => {
+    for (let i = 0; i < 100 && bus.isConnected() !== want; i++) await sleep(100);
+    return bus.isConnected();
+  };
+  try {
+    await bus.connect();
+    assert.equal(bus.isConnected(), true);
+    broker.kill();
+    assert.equal(await waitFor(false), false); // connection dropped
+    broker = spawn("mosquitto", ["-p", String(port)], { stdio: "ignore" });
+    assert.equal(await waitFor(true), true); // automatic reconnect
+    await bus.close();
+    assert.equal(bus.isConnected(), false);
+  } finally {
+    broker.kill();
+  }
+});

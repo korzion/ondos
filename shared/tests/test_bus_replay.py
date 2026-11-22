@@ -164,3 +164,46 @@ def test_unsubscribe_counts_and_stops_delivery(broker):
         time.sleep(0.3)
     obs.close()
     assert len(got_a) == 1 and len(got_b) == 2
+
+
+def _start_broker(port: int) -> subprocess.Popen:
+    p = subprocess.Popen(["mosquitto", "-p", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(100):
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.1).close()
+            return p
+        except OSError:
+            time.sleep(0.05)
+    p.kill()
+    pytest.fail("mosquitto did not open its port in 5 s")
+
+
+def _wait_until(condition, timeout_s: float = 10.0) -> bool:
+    end = time.monotonic() + timeout_s
+    while time.monotonic() < end:
+        if condition():
+            return True
+        time.sleep(0.05)
+    return condition()
+
+
+def test_is_connected_follows_the_broker():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    bus = Bus("cs_app", port=port)
+    assert not bus.is_connected()                  # before connect()
+    broker = _start_broker(port)
+    try:
+        bus.connect()
+        assert bus.is_connected()
+        broker.terminate()
+        broker.wait()
+        assert _wait_until(lambda: not bus.is_connected())   # connection dropped
+        broker = _start_broker(port)
+        assert _wait_until(bus.is_connected)                 # automatic reconnect
+        bus.close()
+        assert not bus.is_connected()
+    finally:
+        broker.terminate()
+        broker.wait()

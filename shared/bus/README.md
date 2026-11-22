@@ -21,6 +21,7 @@ bus.subscribe(T.GAME_STATE, on_state)     # on_state(topic, msg, t_recv_s)
 bus.connect()
 bus.publish(T.VISION_BALL, {"x_mm": 1.0, ...})   # only the topic's own fields
 bus.unsubscribe(T.GAME_STATE, on_state)   # one callback; without it, the whole pattern
+if bus.is_connected(): ...                # False while the broker is down; publish only when True
 ```
 
 Setup once from the repository root: `pip install -e .`
@@ -36,6 +37,7 @@ bus.subscribe(VISION_BALL, (topic, msg, tRecvS) => { ... });
 await bus.connect();
 bus.publish(GAME_STATE, { state: "setup", ... });
 bus.unsubscribe(VISION_BALL, onBall);             // one callback; without it, the whole pattern
+if (bus.isConnected()) { ... }                    // false while the broker is down; publish only when true
 ```
 
 Setup once from the repository root: `npm install`. Tests: `npm test`.

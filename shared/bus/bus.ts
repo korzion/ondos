@@ -144,6 +144,11 @@ export class Bus {
     });
   }
 
+  /** True while the broker connection is up. Becomes false as soon as the connection drops and true again after the automatic reconnect. */
+  isConnected(): boolean {
+    return this.client?.connected ?? false;
+  }
+
   /** Clean shutdown: sys/online/<program> = false, then disconnect. */
   async close(): Promise<void> {
     const c = this.client;
