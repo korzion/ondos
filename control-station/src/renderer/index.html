@@ -31,13 +31,32 @@
         background: #8a2b2b;
       }
 
+      #app {
+        padding: 16px;
+      }
+
       [hidden] {
         display: none !important;
+      }
+
+      .tab-button {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: inherit;
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+
+      .tab-button.active {
+        border-bottom-color: currentColor;
+        font-weight: bold;
       }
     </style>
   </head>
   <body>
     <div id="bus-status" data-connected="false">Bus not connected</div>
+    <nav id="tab-bar"></nav>
     <main id="app"></main>
     <script type="module" src="./app.ts"></script>
   </body>

@@ -1,9 +1,10 @@
 // Renderer entry: creates the app's objects, connects the bus and wires the subscriptions (E.5 "On start").
-// For now it only connects to the broker and shows whether the bus is connected.
 // Naming follows D4: snake_case functions and variables, UPPER_SNAKE_CASE constants, PascalCase classes.
 import { Bus } from "@shared/bus/bus";
 import { BROKER_HOST, BROKER_WS_PORT, GAME_STATE } from "@shared/topics";
 import { BusClient } from "./busClient";
+import { Tab } from "./tab";
+import { ExampleTab } from "./exampleTab";
 
 const BROKER_WS_URL = `ws://${BROKER_HOST}:${BROKER_WS_PORT}`; // the app UI uses the WebSocket listener (IF-03)
 
@@ -34,3 +35,39 @@ window.addEventListener("beforeunload", () => {
 show_bus_status(false);
 setInterval(() => show_bus_status(bus_client.is_connected()), BUS_STATUS_CHECK_INTERVAL_MS);
 void bus_client.connect();
+
+// -- Tabs -------
+
+const tabs: Tab[] = [new ExampleTab("Start", bus_client), new ExampleTab("Plots", bus_client)];
+const tab_buttons = new Map<Tab, HTMLButtonElement>();
+let current_tab: Tab | null = null;
+
+const tab_area = document.getElementById("app") as HTMLElement;
+const tab_bar = document.getElementById("tab-bar") as HTMLElement;
+
+function add_tab(tab: Tab): void {
+  const button = document.createElement("button");
+  button.textContent = tab.title;
+  button.addEventListener("click", () => switch_tab(tab));
+  button.classList.add("tab-button");
+  
+  tab_bar.appendChild(button);
+  tab_buttons.set(tab, button);
+  tab_area.appendChild(tab.root);
+}
+
+function switch_tab(tab: Tab): void {
+  if (current_tab === tab) return;
+  if (current_tab) {
+    current_tab.on_close();
+    tab_buttons.get(current_tab)!.classList.remove("active");
+  }
+
+  current_tab = tab;
+  tab.on_open();
+  tab_buttons.get(current_tab)!.classList.add("active");
+}
+
+tabs.forEach(add_tab);
+switch_tab(tabs[0]);
+
