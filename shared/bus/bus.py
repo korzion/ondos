@@ -75,6 +75,7 @@ class Bus:
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"ondos-{program}-{id(self):x}")
         self._client.will_set(T.sys_online(program), json.dumps(False), qos=1, retain=True)
         self._client.on_connect = self._on_connect
+        self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
 
     # ------------------------------------------------------------ connection
@@ -83,6 +84,10 @@ class Bus:
         self._client.loop_start()
         if not self._connected.wait(timeout_s):
             raise ConnectionError(f"no broker at {self.host}:{self.port}")
+
+    def is_connected(self) -> bool:
+        """True while the broker connection is up. Becomes False as soon as the connection drops and True again after the automatic reconnect."""
+        return self._connected.is_set()
 
     def close(self) -> None:
         """Clean shutdown: sys/online/<program> = false, then disconnect."""
@@ -98,6 +103,9 @@ class Bus:
 
     def __exit__(self, *exc) -> None:
         self.close()
+
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties) -> None:
+        self._connected.clear()
 
     def _on_connect(self, client, userdata, flags, reason_code, properties) -> None:
         client.publish(T.sys_online(self.program), json.dumps(True), qos=1, retain=True)
