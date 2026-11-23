@@ -184,3 +184,22 @@ def test_node_stops_at_the_end_of_a_clip(tmp_path):
     thread.join(timeout=2)
     assert not thread.is_alive()
     assert bus.is_closed and grabber.is_closed
+
+
+def test_status_shows_the_calibrator_values():
+    class StubCalibrator:
+        is_calibrated, markers_found, reprojection_error_mm = True, 4, 0.4
+
+        def update(self, frame):
+            return True
+
+    node_bus = FakeBus()
+    node = VisionNode(VisionVariables.load(), FakeGrabber(), node_bus, calibrator=StubCalibrator())
+    thread = threading.Thread(target=node.run, daemon=True)
+    thread.start()
+    time.sleep(STARTUP_WAIT_S + 0.3)
+    node.stop()
+    thread.join(timeout=2)
+    latest = node_bus.messages(T.VISION_STATUS)[-1]
+    assert latest["is_calibrated"] is True and latest["markers_found"] == 4
+    assert latest["reprojection_error_mm"] == 0.4

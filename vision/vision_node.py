@@ -16,10 +16,12 @@ import numpy as np
 
 from shared import topics as T
 from shared.bus import Bus, now_s
+from vision.board_calibrator import BoardCalibrator, NotCalibratedError
 from vision.command_rules import is_command_allowed, is_vision_command
 from vision.cpu_meter import CpuMeter
 from vision.frame_grabber import FrameGrabber
 from vision.frame_stats import FrameStats
+from vision.vision_config import load_vision_config
 from vision.vision_variables import CONFIG_KEY, VisionVariables
 
 log = logging.getLogger(__name__)
@@ -38,13 +40,16 @@ class VisionNode:
     """Main program of Vision: runs the frame loop, applies the game-state rules and publishes vision/*."""
 
     def __init__(self, variables: VisionVariables, grabber: FrameGrabber, bus: Bus,
-                 clip_dir: Path | None = None) -> None:
+                 clip_dir: Path | None = None, calibrator: BoardCalibrator | None = None) -> None:
         self._variables = variables
         self._grabber = grabber
         self._bus = bus
         self._clip_dir = clip_dir  # None = USB camera
         self._frame_stats = FrameStats()
         self._cpu_meter = CpuMeter()
+        self._calibrator = calibrator or BoardCalibrator(load_vision_config())
+        self._last_frame: np.ndarray | None = None
+        self._camera_height_mm: float | None = None  # from calibrate_camera; used later for the parallax correction
         self._game_state_lock = threading.Lock()
         self._game_state: dict | None = None
         # Bus callbacks run on the MQTT thread; camera and command work is handed to the frame loop
@@ -126,15 +131,14 @@ class VisionNode:
         self._bus.publish(T.VISION_STATUS, self._build_status(now))
 
     def _build_status(self, now: float) -> dict:
-        # is_calibrated, markers_found and reprojection_error_mm come from BoardCalibrator (#46) and
-        # maze_match from MazeReader (#48); until they are integrated nothing is calibrated or matched.
+        # maze_match comes from MazeReader (#48); until it is integrated nothing is matched.
         return {
             "fps_hz": self._frame_stats.fps_hz(now),
             "frame_age_ms": self._frame_stats.mean_frame_age_ms(now),
             "is_camera_ok": self._is_camera_ok(now),
-            "is_calibrated": False,
-            "markers_found": 0,
-            "reprojection_error_mm": 0.0,
+            "is_calibrated": self._calibrator.is_calibrated,
+            "markers_found": self._calibrator.markers_found,
+            "reprojection_error_mm": self._calibrator.reprojection_error_mm,
             "maze_match": NO_MAZE_MATCH,
             "cpu_pct": self._cpu_meter.sample_pct(),
         }
@@ -190,6 +194,8 @@ class VisionNode:
 
     def _process_frame(self, frame: np.ndarray, t_arrival_s: float) -> None:
         self._last_frame_s = t_arrival_s
+        self._last_frame = frame
+        self._calibrator.update(frame)
         # The per-frame parts plug in here, in the order of C.5: calibration, ball state, events,
         # edit state, then the route for this ball sample.
         self._frame_stats.record_frame(t_arrival_s, now_s())
@@ -206,7 +212,16 @@ class VisionNode:
         log.warning("read_maze accepted, but MazeReader (#48) is not integrated yet")
 
     def _handle_calibrate_camera(self) -> None:
-        log.warning("calibrate_camera accepted, but BoardCalibrator (#46) is not integrated yet")
+        if self._last_frame is None:
+            log.warning("calibrate_camera accepted, but there is no frame yet")
+            return
+        try:
+            error_mm, self._camera_height_mm = self._calibrator.calibrate(self._last_frame)
+        except NotCalibratedError as error:
+            log.warning("calibrate_camera failed: %s", error)
+            return
+        log.info("calibrate_camera done: reprojection_error_mm=%.2f camera_height_mm=%.0f",
+                 error_mm, self._camera_height_mm)
 
 
 def _take_request(request: threading.Event) -> bool:
