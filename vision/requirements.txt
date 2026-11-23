@@ -1,0 +1,4 @@
+# Vision (C) dependencies. The shared library (bus, interfaces, testing) is installed
+# from the repository root with:  pip install -e ".[dev]"
+opencv-python>=4.7,<5   # 4.7+ has cv2.aruco.ArucoDetector; the design follows the OpenCV 4.x docs
+numpy>=1.24

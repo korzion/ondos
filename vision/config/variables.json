@@ -1,0 +1,51 @@
+{
+  "$comment": "Vision control variables (C.7), published as vision/variables_spec (IF-07). Names must match shared/interfaces/variables.json. Defaults are STARTING VALUES, tuned in tests. Values from the design document: lost_timeout_ms 200, edit_clear_time_s 1.5, edit_detection_enabled on, edit_min_area_mm2 about 3 x ball area, edit_enter_frames 2, occluded_frames 5, edit_rate_hz 10. HSV ranges use OpenCV units (H 0-179, S and V 0-255). exposure and gain are raw OpenCV camera values; their meaning depends on the camera backend (DirectShow: exposure = log2 of seconds, e.g. -6; V4L2: units of 100 us).",
+  "variables": [
+    {"name": "camera_index", "default": 0, "min": null, "max": null, "step": null, "choices": [0, 1, 2, 3], "is_live": true,
+     "description": "USB camera used by Vision; the camera is reopened. Starts from vision_config.json."},
+
+    {"name": "ball_h_min", "default": 0, "min": 0, "max": 179, "step": 1, "choices": null, "is_live": true, "description": "Ball colour: lowest hue (HSV)."},
+    {"name": "ball_h_max", "default": 179, "min": 0, "max": 179, "step": 1, "choices": null, "is_live": true, "description": "Ball colour: highest hue (HSV)."},
+    {"name": "ball_s_min", "default": 0, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Ball colour: lowest saturation (HSV)."},
+    {"name": "ball_s_max", "default": 255, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Ball colour: highest saturation (HSV)."},
+    {"name": "ball_v_min", "default": 0, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Ball colour: lowest value (HSV)."},
+    {"name": "ball_v_max", "default": 255, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Ball colour: highest value (HSV)."},
+
+    {"name": "exit_h_min", "default": 0, "min": 0, "max": 179, "step": 1, "choices": null, "is_live": true, "description": "Exit marker colour: lowest hue (HSV)."},
+    {"name": "exit_h_max", "default": 179, "min": 0, "max": 179, "step": 1, "choices": null, "is_live": true, "description": "Exit marker colour: highest hue (HSV)."},
+    {"name": "exit_s_min", "default": 0, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Exit marker colour: lowest saturation (HSV)."},
+    {"name": "exit_s_max", "default": 255, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Exit marker colour: highest saturation (HSV)."},
+    {"name": "exit_v_min", "default": 0, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Exit marker colour: lowest value (HSV)."},
+    {"name": "exit_v_max", "default": 255, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true, "description": "Exit marker colour: highest value (HSV)."},
+
+    {"name": "ball_diameter_mm", "default": 12.0, "min": 5.0, "max": 40.0, "step": 0.5, "choices": null, "is_live": false,
+     "description": "Ball size used for detection and the parallax correction; used from the next read_maze."},
+    {"name": "exposure", "default": -6, "min": -13, "max": 10000, "step": 1, "choices": null, "is_live": true,
+     "description": "Locked camera exposure (raw OpenCV value, depends on the camera backend)."},
+    {"name": "gain", "default": 0, "min": 0, "max": 255, "step": 1, "choices": null, "is_live": true,
+     "description": "Locked camera gain (raw OpenCV value)."},
+    {"name": "lost_timeout_ms", "default": 200, "min": 50, "max": 1000, "step": 10, "choices": null, "is_live": true,
+     "description": "Time without a ball detection before is_visible = false."},
+    {"name": "wall_hit_margin_mm", "default": 2.0, "min": 0.0, "max": 10.0, "step": 0.5, "choices": null, "is_live": true,
+     "description": "Extra distance allowed when deciding a wall hit."},
+    {"name": "filter_noise", "default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1, "choices": null, "is_live": true,
+     "description": "Smoothing of the ball filter: lower = smoother, higher = faster reaction."},
+    {"name": "image_rate_hz", "default": 10, "min": 0, "max": 15, "step": 1, "choices": null, "is_live": true,
+     "description": "Rate of vision/image; 0 = off."},
+
+    {"name": "edit_clear_time_s", "default": 1.5, "min": 0.5, "max": 5.0, "step": 0.1, "choices": null, "is_live": true,
+     "description": "Stillness needed in the playfield before the automatic rescan starts."},
+    {"name": "edit_detection_enabled", "default": true, "min": null, "max": null, "step": null, "choices": null, "is_live": true,
+     "description": "Hand detection on or off; off = change the maze with Pause, Read maze and Resume."},
+    {"name": "edit_min_area_mm2", "default": 340.0, "min": 50.0, "max": 5000.0, "step": 10.0, "choices": null, "is_live": true,
+     "description": "Smallest changed area that counts as a hand (about 3 x ball area)."},
+    {"name": "edit_enter_frames", "default": 2, "min": 1, "max": 10, "step": 1, "choices": null, "is_live": true,
+     "description": "Detector checks in a row before hand_present."},
+    {"name": "occluded_frames", "default": 5, "min": 1, "max": 30, "step": 1, "choices": null, "is_live": true,
+     "description": "Frames in a row with fewer than 4 markers before occluded."},
+    {"name": "edit_rate_hz", "default": 10, "min": 1, "max": 30, "step": 1, "choices": null, "is_live": true,
+     "description": "How often the hand detector runs."},
+    {"name": "wall_hit_min_speed_mm_s", "default": 30.0, "min": 0.0, "max": 500.0, "step": 5.0, "choices": null, "is_live": true,
+     "description": "Slowest contact speed that counts as a wall hit."}
+  ]
+}
