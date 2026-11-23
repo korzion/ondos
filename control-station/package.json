@@ -39,5 +39,8 @@
       "target": "AppImage",
       "category": "Development"
     }
+  },
+  "dependencies": {
+    "uplot": "^1.6.32"
   }
 }
