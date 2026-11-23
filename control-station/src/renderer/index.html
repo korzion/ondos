@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      Content Security Policy:
+      - connect-src: the broker's WebSocket port (IF-03), plus the dev server's own socket for hot reload.
+      - 'unsafe-eval': Ajv in shared/bus/bus.ts compiles the message schemas into functions at run time.
+        (Electron prints an "Insecure Content-Security-Policy" warning for it in dev; expected.)
+      - worker-src blob: mqtt.js runs its keep-alive timer in a Web Worker made from a blob.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://127.0.0.1:9001 ws://localhost:*"
+    />
+    <title>Ondos Control Station</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #1b2026;
+        color: #e6e8eb;
+      }
+      #top-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 16px;
+        padding: 8px 16px;
+        background: #252b33;
+      }
+      .top-bar-state {
+        font-weight: bold;
+      }
+      .top-bar-banners {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        flex: 1;
+      }
+      .banner {
+        padding: 4px 10px;
+        border-radius: 4px;
+        background: #8a2b2b;
+      }
+      .e-stop-button {
+        margin-left: auto;
+        padding: 8px 20px;
+        border: none;
+        border-radius: 4px;
+        background: #c62828;
+        color: #ffffff;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      .e-stop-button:disabled {
+        background: #5a3a3a;
+        color: #b0a0a0;
+        cursor: not-allowed;
+      }
+
+      #app {
+        padding: 16px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      .tab-button {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: inherit;
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+
+      .tab-button.active {
+        border-bottom-color: currentColor;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <header id="top-bar"></header>
+    <nav id="tab-bar"></nav>
+    <main id="app"></main>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>
