@@ -1,0 +1,17 @@
+{
+  "$comment": "Vision configuration (C.5). STARTING VALUES: to be measured on the real maze plate and camera. Board frame (D4): origin at the centre of the playing area, +x to the right edge, +y to the far edge. Markers (4x4 dictionary, IDs 0-3) on the plate corners: 0 front-left, 1 front-right, 2 back-right, 3 back-left; positions are the marker centres.",
+  "plate_width_mm": 300.0,
+  "plate_height_mm": 300.0,
+  "marker_dictionary": "DICT_4X4_50",
+  "marker_size_mm": 35.0,
+  "markers": [
+    {"id": 0, "centre_x_mm": -127.5, "centre_y_mm": -127.5},
+    {"id": 1, "centre_x_mm": 127.5, "centre_y_mm": -127.5},
+    {"id": 2, "centre_x_mm": 127.5, "centre_y_mm": 127.5},
+    {"id": 3, "centre_x_mm": -127.5, "centre_y_mm": 127.5}
+  ],
+  "camera_index": 0,
+  "frame_width_px": 640,
+  "frame_height_px": 480,
+  "camera_fps_hz": 30.0
+}
