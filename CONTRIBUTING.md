@@ -8,7 +8,7 @@
 5. Don't commit large binaries (videos, archives, recordings). Share them on Drive. Small model files in `auto-controller/ai/models/` are the exception.
 6. **Topic names and message fields come only from `shared/interfaces/`.** Nobody types a topic string by hand.
 7. **Tests:** every test of your module has its inputs in `<module>/fixtures/<TEST-ID>/` (inputs + README) and runs with `python run_test.py <TEST-ID>`, printing PASS or FAIL. A module test never needs another module.
-8. **Write clean, readable code.** This applies to everyone, and to every AI tool you use: tell it to read this file first, and review what it writes before you commit.
+8. **Write clean, readable code.** This applies to everyone, and to every AI tool you use: tell it to read this file first, and review what it writes before you commit. AI tools never commit, push or merge: you read the diff and commit yourself.
 9. **Stay in line with the Module Design Document** (`docs/module-design/`). Code follows the document: its parts, interfaces, requirements and tests. If your work needs something that is not in the document (a new field or topic, a new class, a different behaviour or parameter), do not decide alone. Write it in the issue and tell your module team; if it touches an interface or another module, tell Arif. The document is updated afterwards.
 
 ## Clean code
@@ -57,7 +57,7 @@ Then open a Pull Request on GitHub, get **1 approval** (from your module team if
 5. Büyük dosyaları (video, arşiv, kayıtlar) repoya koymayın, Drive'dan paylaşın. `auto-controller/ai/models/` altındaki küçük model dosyaları istisna.
 6. **Topic isimleri ve mesaj alanları sadece `shared/interfaces/`'ten gelir.** Topic string'i elle yazılmaz.
 7. **Testler:** modülünüzün her testi `<modül>/fixtures/<TEST-ID>/` altında (girdiler + README) ve `python run_test.py <TEST-ID>` ile çalışır, PASS veya FAIL basar. Modül testi başka bir modüle ihtiyaç duymaz.
-8. **Temiz ve okunabilir kod yazın.** Bu herkes için geçerli, kullandığınız her yapay zekâ aracı için de: önce bu dosyayı okumasını söyleyin ve yazdığını commit etmeden önce kendiniz inceleyin.
+8. **Temiz ve okunabilir kod yazın.** Bu herkes için geçerli, kullandığınız her yapay zekâ aracı için de: önce bu dosyayı okumasını söyleyin ve yazdığını commit etmeden önce kendiniz inceleyin. Yapay zekâ araçları commit, push veya merge yapmaz: değişikliği (diff) siz okur ve kendiniz commit edersiniz.
 9. **Modül Tasarım Belgesi'nden (`docs/module-design/`) kopmayın.** Kod belgeyi izler: parçalar, arayüzler, gereksinimler ve testler. İşiniz belgede olmayan bir şey gerektiriyorsa (yeni bir alan ya da topic, yeni bir sınıf, farklı bir davranış ya da parametre) tek başınıza karar vermeyin. Issue'ya yazın ve modül ekibinize söyleyin; bir arayüze ya da başka bir modüle dokunuyorsa Arif'e haber verin. Belge sonradan güncellenir.
 
 **Temiz kod:**
