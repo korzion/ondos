@@ -2,6 +2,7 @@
 // and draws it with uPlot (E.5 "Plot").
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
+import { log_draw } from "./drawLog";
 
 const PLOT_HEIGHT_PX = 160;
 const SERIES_COLORS = ["#4fc3f7", "#ffb74d", "#81c784", "#e57373", "#ba68c8", "#fff176"];
@@ -13,15 +14,17 @@ type Message = Record<string, unknown>;
 export class Plot {
     private readonly container: HTMLElement;
     private readonly window_s: number;
+    private readonly name: string; // only for the draw log (E-T1)
     private readonly times_s: number[] = [];
     private readonly values_by_field = new Map<string, (number | null)[]>();
     private chart: uPlot | null = null;
     private is_chart_outdated = false;
     private has_new_data = false;
 
-    constructor(container: HTMLElement, window_s: number) {
+    constructor(container: HTMLElement, window_s: number, name = "") {
         this.container = container;
         this.window_s = window_s;
+        this.name = name;
     }
 
     add_field(field: string): void {
@@ -58,8 +61,16 @@ export class Plot {
         this.chart!.setData(this.chart_data(), false);
         // The right edge is the newest sample, not the clock, so the time axis stops when the data stops.
         const newest_s = this.times_s[this.times_s.length - 1];
+        const oldest_s = this.times_s[0];
         this.chart!.setScale("x", { min: newest_s - this.window_s, max: newest_s });
         this.has_new_data = false;
+        log_draw({
+            plot: this.name,
+            x_min_s: newest_s - this.window_s,
+            x_max_s: newest_s,
+            oldest_s,
+            points: this.times_s.length,
+        });
     }
 
     private drop_samples_older_than(cutoff_s: number): void {

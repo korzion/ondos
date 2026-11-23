@@ -3,6 +3,8 @@
 // which connects to the broker over WebSocket (IF-03).
 import { app, BrowserWindow, Menu } from "electron";
 import { join } from "node:path";
+import { DRAW_LOG_QUERY_FLAG } from "../common/drawLog";
+import { draw_log_path, write_draw_log } from "./drawLogFile";
 
 const WINDOW_WIDTH = 1280;
 const WINDOW_HEIGHT = 800;
@@ -25,13 +27,20 @@ function create_window(): void {
 
   window.once("ready-to-show", () => window.show());
 
+  // Test E-T1: the plots log their draw times only when the page URL carries the flag.
+  const log_path = draw_log_path();
+  const query: Record<string, string> = log_path ? { [DRAW_LOG_QUERY_FLAG]: "1" } : {};
+  if (log_path) write_draw_log(window, log_path);
+
   // npm run dev: electron-vite serves the renderer and sets this URL (hot reload).
   // npm run build / packaged app: load the built file next to this one.
   const dev_server_url = process.env.ELECTRON_RENDERER_URL;
   if (dev_server_url) {
-    void window.loadURL(dev_server_url);
+    const url = new URL(dev_server_url);
+    Object.entries(query).forEach(([name, value]) => url.searchParams.set(name, value));
+    void window.loadURL(url.toString());
   } else {
-    void window.loadFile(join(__dirname, "../renderer/index.html"));
+    void window.loadFile(join(__dirname, "../renderer/index.html"), { query });
   }
 }
 
