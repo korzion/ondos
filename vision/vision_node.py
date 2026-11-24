@@ -21,7 +21,6 @@ from vision.command_rules import is_command_allowed, is_vision_command
 from vision.cpu_meter import CpuMeter
 from vision.frame_grabber import FrameGrabber
 from vision.frame_stats import FrameStats
-from vision.vision_config import load_vision_config
 from vision.vision_variables import CONFIG_KEY, VisionVariables
 
 log = logging.getLogger(__name__)
@@ -39,17 +38,16 @@ EXPOSURE_VARIABLES = frozenset({"exposure", "gain"})
 class VisionNode:
     """Main program of Vision: runs the frame loop, applies the game-state rules and publishes vision/*."""
 
-    def __init__(self, variables: VisionVariables, grabber: FrameGrabber, bus: Bus,
-                 clip_dir: Path | None = None, calibrator: BoardCalibrator | None = None) -> None:
+    def __init__(self, variables: VisionVariables, grabber: FrameGrabber, bus: Bus, calibrator: BoardCalibrator,
+                 clip_dir: Path | None = None) -> None:
         self._variables = variables
         self._grabber = grabber
         self._bus = bus
         self._clip_dir = clip_dir  # None = USB camera
         self._frame_stats = FrameStats()
         self._cpu_meter = CpuMeter()
-        self._calibrator = calibrator or BoardCalibrator(load_vision_config())
+        self._calibrator = calibrator
         self._last_frame: np.ndarray | None = None
-        self._camera_height_mm: float | None = None  # from calibrate_camera; used later for the parallax correction
         self._game_state_lock = threading.Lock()
         self._game_state: dict | None = None
         # Bus callbacks run on the MQTT thread; camera and command work is handed to the frame loop
@@ -216,12 +214,12 @@ class VisionNode:
             log.warning("calibrate_camera accepted, but there is no frame yet")
             return
         try:
-            error_mm, self._camera_height_mm = self._calibrator.calibrate(self._last_frame)
+            error_mm, camera_height_mm = self._calibrator.calibrate(self._last_frame)
         except NotCalibratedError as error:
             log.warning("calibrate_camera failed: %s", error)
             return
         log.info("calibrate_camera done: reprojection_error_mm=%.2f camera_height_mm=%.0f",
-                 error_mm, self._camera_height_mm)
+                 error_mm, camera_height_mm)
 
 
 def _take_request(request: threading.Event) -> bool:

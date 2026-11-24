@@ -48,6 +48,7 @@ class BoardCalibrator:
         self._frames_without_all_markers = 0
         self._markers_found = 0
         self._reprojection_error_mm = 0.0
+        self._camera_height_mm: float | None = None
 
     @property
     def is_calibrated(self) -> bool:
@@ -63,6 +64,11 @@ class BoardCalibrator:
     def reprojection_error_mm(self) -> float:
         """Quality of the last calibrate() run; 0.0 before the first run."""
         return self._reprojection_error_mm
+
+    @property
+    def camera_height_mm(self) -> float | None:
+        """Camera height from the last successful calibrate() (for the parallax correction); None before that."""
+        return self._camera_height_mm
 
     def update(self, frame: np.ndarray) -> bool:
         """Look for the markers in this frame and refresh the homography; True if it is valid."""
@@ -87,8 +93,8 @@ class BoardCalibrator:
         self._register_markers(detected)
         image_points, board_points = self._matching_points(detected)
         self._reprojection_error_mm = _reprojection_error_mm(self._homography, image_points, board_points)
-        camera_height_mm = _camera_height_mm(frame.shape, image_points, board_points)
-        return self._reprojection_error_mm, camera_height_mm
+        self._camera_height_mm = _camera_height_mm(frame.shape, image_points, board_points)
+        return self._reprojection_error_mm, self._camera_height_mm
 
     def _register_markers(self, detected: dict[int, np.ndarray]) -> None:
         self._markers_found = len(detected)

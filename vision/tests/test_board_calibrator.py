@@ -1,9 +1,14 @@
 """Unit tests for BoardCalibrator, on synthetic frames: the 4 markers drawn through a known plate -> image mapping."""
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+
 import cv2
 import numpy as np
 import pytest
+
+import vision.__main__ as vision_main
 
 from vision.board_calibrator import (
     LAST_HOMOGRAPHY_HOLD_FRAMES,
@@ -11,7 +16,7 @@ from vision.board_calibrator import (
     BoardCalibrator,
     NotCalibratedError,
 )
-from vision.vision_config import VisionConfig, load_vision_config
+from vision.vision_config import DEFAULT_CONFIG_PATH, VisionConfig, load_vision_config
 
 FRAME_WIDTH_PX = 640
 FRAME_HEIGHT_PX = 480
@@ -142,3 +147,51 @@ def test_calibrate_measures_the_camera_height(config):
 def test_colour_frames_are_accepted(config):
     gray = draw_frame(config, board_to_pixel_matrix())
     assert BoardCalibrator(config).update(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)) is True
+
+
+def test_camera_height_is_kept_by_the_calibrator(config):
+    calibrator = BoardCalibrator(config)
+    assert calibrator.camera_height_mm is None
+    _, height_mm = calibrator.calibrate(draw_frame(config, board_to_pixel_matrix()))
+    assert calibrator.camera_height_mm == height_mm
+
+
+def test_failed_calibrate_keeps_no_camera_height(config):
+    calibrator = BoardCalibrator(config)
+    frame = draw_frame(config, board_to_pixel_matrix(), hidden_ids=(config.markers[0].marker_id,))
+    with pytest.raises(NotCalibratedError):
+        calibrator.calibrate(frame)
+    assert calibrator.camera_height_mm is None
+
+
+def test_marker_size_from_the_config_reaches_the_calibrator(config):
+    """The calibrator takes marker_size_mm from its config: a frame drawn with other markers needs that config."""
+    big_config = replace(config, marker_size_mm=config.marker_size_mm * 1.5)
+    frame = draw_frame(big_config, board_to_pixel_matrix())
+    error_mm, _ = BoardCalibrator(big_config).calibrate(frame)
+    wrong_error_mm, _ = BoardCalibrator(config).calibrate(frame)
+    assert error_mm < POINT_TOLERANCE_MM < wrong_error_mm
+
+
+def test_main_builds_the_calibrator_from_the_config_argument(tmp_path, monkeypatch, config):
+    """python -m vision --config FILE must use FILE for the calibrator, not the default file."""
+    other = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    other["marker_size_mm"] = config.marker_size_mm * 1.5
+    config_file = tmp_path / "other_config.json"
+    config_file.write_text(json.dumps(other), encoding="utf-8")
+    created = []
+
+    class FakeNode:
+        def __init__(self, variables, grabber, bus, calibrator, clip_dir=None):
+            created.append(calibrator)
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr(vision_main, "VisionNode", FakeNode)
+    monkeypatch.setattr(vision_main, "Bus", lambda *args: None)
+    assert vision_main.main(["--config", str(config_file)]) == 0
+    other_config = load_vision_config(config_file)
+    frame = draw_frame(other_config, board_to_pixel_matrix())
+    error_mm, _ = created[0].calibrate(frame)
+    assert error_mm < POINT_TOLERANCE_MM

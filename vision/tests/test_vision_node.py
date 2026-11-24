@@ -11,7 +11,9 @@ import pytest
 from shared import topics as T
 from shared.bus import now_s
 from shared.interfaces import validate
+from vision.board_calibrator import BoardCalibrator
 from vision.tests.message_helpers import with_envelope
+from vision.vision_config import load_vision_config
 from vision.vision_node import CAMERA_RETRY_PERIOD_S, VisionNode
 from vision.vision_variables import CONFIG_KEY, VisionVariables
 
@@ -98,6 +100,10 @@ class FakeGrabber:
         self.is_closed = True
 
 
+def make_calibrator() -> BoardCalibrator:
+    return BoardCalibrator(load_vision_config())
+
+
 def game_state_fields(state: str) -> dict:
     return {"state": state, "mode": "glove", "game_id": None, "maze_id": None, "elapsed_s": 0.0, "cell": None,
             "distance_to_exit_cells": None, "progress_pct": 0.0, "result": "none"}
@@ -110,7 +116,7 @@ def running_node():
 
     def start(grabber: FakeGrabber):
         bus = FakeBus()
-        node = VisionNode(VisionVariables.load(), grabber, bus)
+        node = VisionNode(VisionVariables.load(), grabber, bus, make_calibrator())
         thread = threading.Thread(target=node.run, daemon=True)
         thread.start()
         started.append((node, thread))
@@ -178,7 +184,7 @@ def test_read_maze_is_accepted_without_game_state(running_node, caplog):
 
 def test_node_stops_at_the_end_of_a_clip(tmp_path):
     bus, grabber = FakeBus(), FakeGrabber(clip_frame_count=3)
-    node = VisionNode(VisionVariables.load(), grabber, bus, clip_dir=tmp_path)
+    node = VisionNode(VisionVariables.load(), grabber, bus, make_calibrator(), clip_dir=tmp_path)
     thread = threading.Thread(target=node.run, daemon=True)
     thread.start()
     thread.join(timeout=2)
@@ -194,7 +200,7 @@ def test_status_shows_the_calibrator_values():
             return True
 
     node_bus = FakeBus()
-    node = VisionNode(VisionVariables.load(), FakeGrabber(), node_bus, calibrator=StubCalibrator())
+    node = VisionNode(VisionVariables.load(), FakeGrabber(), node_bus, StubCalibrator())
     thread = threading.Thread(target=node.run, daemon=True)
     thread.start()
     time.sleep(STARTUP_WAIT_S + 0.3)
