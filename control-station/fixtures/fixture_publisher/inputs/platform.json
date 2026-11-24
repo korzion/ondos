@@ -1,0 +1,7 @@
+{
+  "cell_size_mm": 40.0,
+  "tilt_limit_deg": 10.0,
+  "tilt_gain_deg_per_mm": 0.15,
+  "rescan_s": 1.5,
+  "battery_pct": 80
+}
