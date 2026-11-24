@@ -13,6 +13,7 @@ from pathlib import Path
 
 from shared import topics as T
 from shared.bus import Bus
+from vision.board_calibrator import BoardCalibrator
 from vision.config_file import ConfigError
 from vision.frame_grabber import FrameGrabber
 from vision.vision_config import DEFAULT_CONFIG_PATH, load_vision_config
@@ -45,7 +46,8 @@ def main(argv: list[str] | None = None) -> int:
         grabber = FrameGrabber(config.frame_width_px, config.frame_height_px, config.camera_fps_hz)
         if args.record is not None:
             grabber.start_recording(args.record)
-        node = VisionNode(variables, grabber, Bus(PROGRAM_ID, args.host, args.port), clip_dir=args.clip)
+        node = VisionNode(variables, grabber, Bus(PROGRAM_ID, args.host, args.port), BoardCalibrator(config),
+                          clip_dir=args.clip)
         node.run()
     except (ConfigError, ConnectionError, FileExistsError, FileNotFoundError) as error:
         log.error("%s", error)
