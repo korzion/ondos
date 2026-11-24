@@ -9,7 +9,7 @@ export interface GameVariables {
   ball_lost_pause_s: number;
   glove_lost_pause_s: number;
   exit_hold_frames: number;
-  /** 0 = no time limit (ASSUMPTION: a spec value cannot be null, so "off" is 0). */
+  /** 0 = no time limit: a spec value cannot be null, so "off" is 0. */
   time_limit_s: number;
 }
 
@@ -26,7 +26,7 @@ interface NumberVariableSpec {
   description: string;
 }
 
-// Start values from E.7. ASSUMPTION: E.7 gives no limits or steps; the min / max / step below are ours.
+// Start values from E.7. E.7 gives no limits or steps; the min / max / step below are ours.
 const GAME_VARIABLE_SPECS: readonly NumberVariableSpec[] = [
   { name: "not_moving_time_s", default: 3, min: 0.5, max: 30, step: 0.5, is_live: true, is_integer: false,
     description: "Time the ball must stay still before the not_moving warning" },

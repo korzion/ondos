@@ -17,10 +17,10 @@ export const ROUTE_MAX_AGE_MS = 300;
 export const EDIT_STATE_MAX_AGE_MS = 2000;
 
 /**
- * ASSUMPTION: IF-02 glove/state gives 200 ms only for the Control Station reader;
- * GameManager uses the same limit to decide whether the glove is connected.
+ * IF-02 glove/state gives 200 ms only for the Control Station reader; GameManager uses the same limit
+ * to decide whether the glove is connected.
  */
 export const GLOVE_STATE_MAX_AGE_MS = 200;
 
-/** ASSUMPTION: how long main.ts waits for the retained game/state of a previous run (section 5.4). */
+/** How long main.ts waits for the retained game/state of a previous run (section 5.4). */
 export const RETAINED_STATE_WAIT_MS = 500;

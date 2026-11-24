@@ -6,7 +6,7 @@ function two_digits(value: number): string {
 
 /**
  * game_id = time the game entered ready, YYYYMMDD-HHMMSS (D4).
- * ASSUMPTION: local time of the laptop, as the example 20261103-140500 suggests.
+ * Local time of the laptop, as the example 20261103-140500 suggests.
  */
 export function make_game_id(now_s: number): string {
   const t = new Date(now_s * MS_PER_S);

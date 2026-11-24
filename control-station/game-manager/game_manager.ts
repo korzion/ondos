@@ -165,7 +165,7 @@ export class GameManager {
   }
 
   /**
-   * ASSUMPTION: not in the E.5 method list, but setup → ready needs plan/distance_map (section 5.2),
+   * Not in the E.5 method list, but setup → ready needs plan/distance_map (section 5.2),
    * so GameManager also reads it.
    */
   on_distance_map(msg: DistanceMapMsg): void {
@@ -204,7 +204,7 @@ export class GameManager {
   }
 
   /**
-   * ASSUMPTION: not in the E.5 method list, but start and resume need sys/online/vision = true (section 5.3).
+   * Not in the E.5 method list, but start and resume need sys/online/vision = true (section 5.3).
    * Same signature as TopicHealthMonitor.on_online.
    */
   on_online(program: string, is_online: boolean): void {
@@ -214,8 +214,8 @@ export class GameManager {
   }
 
   /**
-   * ASSUMPTION: not in the E.5 method list; E.6 says GameManager publishes game/variables_spec,
-   * so it also reads cs/variables/game, clamps the values and reports them back (IF-07).
+   * Not in the E.5 method list; E.6 says GameManager publishes game/variables_spec, so it also reads
+   * cs/variables/game, clamps the values and reports them back (IF-07).
    */
   on_variables(msg: VariablesMsg): void {
     if (is_replay(msg)) return;
@@ -276,9 +276,10 @@ export class GameManager {
   }
 
   /**
-   * read_maze is acted on by Vision; GameManager only leaves ready (section 5.2). ASSUMPTION: after a read_maze
-   * in setup or ready, the maze already known no longer counts: setup waits for a vision/maze published after
-   * the command, otherwise it would go straight back to ready with the old scan.
+   * read_maze is acted on by Vision; GameManager only leaves ready (section 5.2). After a read_maze in setup
+   * or ready, the maze already known no longer counts: setup waits for a vision/maze published after the
+   * command, otherwise it would go straight back to ready with the old scan. No timeout: Vision publishes
+   * vision/maze after every validated scan, and a failed scan shows in edit_state.
    */
   private handle_read_maze(command_time_s: number, now_s: number): void {
     if (this.state !== "setup" && this.state !== "ready") return;
@@ -352,7 +353,7 @@ export class GameManager {
     this.exit_frames = 0;
     // Section 5.2: a new maze_id in ready is handled like read_maze: ready → setup → ready with a new game_id.
     if (this.state === "ready" && had_maze) this.set_state("setup", now_s);
-    // ASSUMPTION: a new maze while playing cannot come without a hand in the playfield; pause to be safe.
+    // A new maze while playing cannot come without a hand in the playfield; pause to be safe.
     if (this.state === "playing") this.pause(now_s, "maze changed during play");
   }
 
@@ -418,8 +419,8 @@ export class GameManager {
 
   /**
    * Section 5.2 start: ball in the start cell, playfield clear, glove connected in glove mode.
-   * ASSUMPTION: start also needs the other resume conditions (fresh ball, platform and route), because a game
-   * started without them would pause at once, and IF-04 says a missing route blocks start.
+   * Start also needs the other resume conditions (fresh ball, platform and route), because a game started
+   * without them would pause at once, and IF-04 says a missing route blocks start.
    */
   private start_blockers(now_s: number): string[] {
     const blockers = this.resume_blockers(now_s);
@@ -468,7 +469,7 @@ export class GameManager {
   }
 
   /**
-   * ASSUMPTION: glove/state is_connected (on_glove_state) decides, not platform/state is_glove_connected;
+   * glove/state is_connected (on_glove_state, as in E.5) decides, not platform/state is_glove_connected;
    * both carry the same 300 ms rule from the bridge.
    */
   private is_glove_connected(now_s: number): boolean {
@@ -513,9 +514,9 @@ export class GameManager {
   }
 
   /**
-   * game/state cell and distance_to_exit_cells. ASSUMPTION: both are taken from the latest plan/route
-   * (Vision's ball_cell and distance) when it is fresh, matches the active maze and the ball is visible;
-   * otherwise they are null (unknown). GameManager does not compute cells itself.
+   * game/state cell and distance_to_exit_cells, taken from the latest plan/route (Vision's ball_cell and
+   * distance) when it is fresh, matches the active maze and the ball is visible; otherwise they are null
+   * (unknown). GameManager has no maze geometry of its own.
    */
   private refresh_ball_cell(now_s: number): void {
     const route = this.route;
@@ -597,8 +598,8 @@ export class GameManager {
   }
 
   /**
-   * ASSUMPTION: "time and warnings are frozen" in paused is read as: the still and away windows start
-   * again when play continues, so no warning fires right after resume.
+   * "Time and warnings are frozen" in paused: the still and away windows start again when play
+   * continues, so no warning fires right after resume.
    */
   private reset_warning_windows(): void {
     this.still_window = null;
@@ -642,8 +643,8 @@ export class GameManager {
 
   /**
    * Section 5.4: after a restart the retained playing is not trusted; the old game becomes aborted and
-   * GameManager starts in setup. ASSUMPTION: the mode of the previous run is kept, and the old game_id stays
-   * in game/state with result = aborted until the next game enters ready.
+   * GameManager starts in setup. The mode of the previous run is kept, and the old game_id
+   * stays in game/state with result = aborted until the next game enters ready.
    */
   private restore_after_restart(previous: GameStateMsg): void {
     this.mode = previous.mode;
@@ -669,7 +670,7 @@ function next_mode(mode: Mode, presses: number): Mode {
 }
 
 /**
- * Section 5.2 "a path to the exit exists". ASSUMPTION: with a start cell, its distance must be reachable;
+ * Section 5.2 "a path to the exit exists": with a start cell, its distance must be reachable;
  * without one (start_cell = null), at least one cell other than the exit must reach the exit.
  */
 function has_path_to_exit(maze: MazeMsg, map: DistanceMapMsg): boolean {
