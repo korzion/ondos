@@ -29,6 +29,16 @@ npm run game-manager                 # broker at mqtt://127.0.0.1:1883
 npm run game-manager <broker-url>    # another broker
 ```
 
+## Recorder
+
+The Recorder is a Node.js background process and continues running when the desktop app closes. Start it from the repository root with:
+
+```
+npm run recorder
+```
+
+It writes one IF-09 JSONL file per game into `recordings/` by default. It reads `recording_folder` and `recording_tail_s` from the Control Station variable spec and applied settings. Set `ONDOS_RECORDING_FOLDER` or pass `--recordings <folder>` to override the folder; `ONDOS_MQTT_URL` sets the broker URL and `--url <url>` overrides it. The recording tail defaults to 2 seconds and can be overridden with `ONDOS_RECORDING_TAIL_S` or `--tail-s <seconds>`.
+
 ## Tests and Dec 4 demo
 
 Every test has its inputs in `fixtures/<TEST-ID>/` (input files + a README saying what can be edited) and runs with
