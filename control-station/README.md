@@ -20,6 +20,15 @@ Sample recordings in `shared/samples/` are owned by E.
 
 The internal folder layout of this module is decided by the module team.
 
+## GameManager
+
+A Node.js background process in `game-manager/`, separate from the Electron app. Run `npm ci` once at the repository root (GameManager takes `mqtt`, `ajv` and `tsx` from there), then from this folder:
+
+```
+npm run game-manager                 # broker at mqtt://127.0.0.1:1883
+npm run game-manager <broker-url>    # another broker
+```
+
 ## Tests and Dec 4 demo
 
 Every test has its inputs in `fixtures/<TEST-ID>/` (input files + a README saying what can be edited) and runs with
