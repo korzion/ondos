@@ -148,8 +148,9 @@ export class GameManager {
     const now_s = this.clock();
     this.ball = msg;
     if (msg.is_visible) this.last_ball_visible_s = msg.timestamp_s;
-    if (this.state === "playing") this.count_exit_frame(msg, now_s);
+    // Pause rules first: a frame that arrives when the game must pause cannot finish it.
     this.update(now_s);
+    if (this.state === "playing") this.count_exit_frame(msg, now_s);
   }
 
   on_maze(msg: MazeMsg): void {
