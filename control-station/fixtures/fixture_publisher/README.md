@@ -19,7 +19,7 @@ python control-station/fixtures/fixture_publisher/fixture_publisher.py     # fro
 python control-station/fixtures/fixture_publisher/fixture_publisher.py --no-respond    # play only, answer nothing (E-T4)
 ```
 
-Options: `--host`, `--port`, `--data DIR`. Stop with `q` + Enter or Ctrl+C. Each program it stands in for has its own connection, so `sys/online/<program>` is true while it runs. The data plays in a loop of 18 s.
+Options: `--host`, `--port`, `--data DIR`. Stop with `q` + Enter or Ctrl+C. Each program it stands in for has its own connection, so `sys/online/<program>` is true while it runs. The data plays in a loop (`loop_s` in `data/behaviour.json`, 31 s now).
 
 ## What is in `data/`
 
@@ -51,8 +51,8 @@ python control-station/fixtures/fixture_publisher/make_fixture.py
 | File | What you can change |
 | --- | --- |
 | `inputs/maze.txt`, `maze_after_change.txt` | The two mazes as a text grid. `#` wall, `.` open, `S` start, `E` exit. Lines `2 x rows + 1` long, border and corners `#`, the top line is north. Both mazes need the same size and exit |
-| `inputs/ball_path.json` | `cells` `[row, col]` the ball walks through (the same cell twice = it waits there), `seconds_per_cell`, `end_hold_s` (how long it stands on the last cell: the `not_moving` warning) |
-| `inputs/platform.json` | `cell_size_mm`, `tilt_limit_deg`, `tilt_gain_deg_per_mm`, `rescan_s`, `battery_pct` |
+| `inputs/ball_path.json` | `cells` `[row, col]` the ball walks through, `seconds_per_cell`, `end_hold_s` (how long it stands on the last cell after the finish). The same cell listed twice in a row = the ball waits there one `seconds_per_cell`. The demo path waits 6 s in the start cell (GameManager accepts Start only there) and 4 s in the cell before the exit (the `not_moving` warning) |
+| `inputs/platform.json` | `cell_size_mm`, `wall_thickness_mm`, `wall_height_mm`, `ball_diameter_mm`, `exit_radius_mm`, `tilt_limit_deg`, `tilt_gain_deg_per_mm`, `rescan_s`, `battery_pct`. Demo values: 25 mm cells, 2 mm walls, 10 mm high, 14 mm ball (12 to 15 mm possible), exit radius 8 mm is a placeholder |
 
 The generator checks its output before it writes: every cell of a distance map is 1 + its smallest open neighbour, every route stays on open cells and gets one step closer each point, and every line is a valid message of its topic. A wrong input stops it with the file and line.
 
