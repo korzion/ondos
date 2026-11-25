@@ -19,12 +19,16 @@ type VariableSpec = {
 };
 
 const DEFAULT_STEP = 1;
+// How long a sent value waits for the module to republish its spec before the control goes back
+// to the confirmed value. Not in the design document: chosen here, noted on #78.
+const MODULE_ANSWER_TIMEOUT_MS = 1000;
 
 export class VariablesTab extends Tab {
     private values: Map<ConfigKey, Map<string, VariableValue>> = new Map();
     private key_elements: Map<ConfigKey, Map<string, ControlElement>> = new Map();
     private key_sections: Map<ConfigKey, HTMLElement> = new Map();
     private slider_readouts: Map<ControlElement, HTMLSpanElement> = new Map(); // the number shown next to each slider
+    private pending_timers: Map<ControlElement, number> = new Map(); // sent values waiting for the module to confirm them
 
     constructor(title: string, bus_client: BusClient) {
         super(title, bus_client);
@@ -43,20 +47,38 @@ export class VariablesTab extends Tab {
             this.create_variable_element(key, spec);
         }
 
-        const value = this.values.get(key)!.get(spec.name)!;
-
-        const control: ControlElement = key_elements.get(spec.name)!;
-        if (control instanceof HTMLInputElement && control.type === "checkbox") control.checked = value as boolean;
-        else control.value = String(value);
-
-        const readout = this.slider_readouts.get(control);
-        if (readout) readout.textContent = control.value;
+        this.set_element_value(key, spec.name, spec.value);
+        this.clear_pending(key_elements.get(spec.name)!);
     }
 
     private apply(key: ConfigKey, name: string, value: VariableValue): void {
         const msg: Message = {};
         msg[name] = value;
-        this.bus_client.publish(csVariables(key), msg);
+        if (this.bus_client.publish(csVariables(key), msg)) {
+            this.mark_pending(key, name, this.key_elements.get(key)!.get(name)!);
+        }
+        else {
+            console.warn(`${key}/${name}: failed to publish new value`);
+            this.set_element_value(key, name, this.values.get(key)!.get(name)!); // put back the confirmed value
+        }
+    }
+
+    private mark_pending(key: ConfigKey, name: string, control: ControlElement): void {
+        this.clear_pending(control); // a second change restarts the wait
+        control.parentElement!.classList.add("variable-pending");
+        const id = window.setTimeout(() => {
+            this.clear_pending(control);
+            this.set_element_value(key, name, this.values.get(key)!.get(name)!); // put back the confirmed value
+            console.warn(`${key}/${name}: no answer from the module`);
+        }, MODULE_ANSWER_TIMEOUT_MS);
+        this.pending_timers.set(control, id);
+    }
+
+    private clear_pending(control: ControlElement): void {
+        control.parentElement!.classList.remove("variable-pending");
+        const id = this.pending_timers.get(control);
+        if (id !== undefined) window.clearTimeout(id);
+        this.pending_timers.delete(control);
     }
 
     private control_kind(spec: VariableSpec): ControlKind {
@@ -169,6 +191,15 @@ export class VariablesTab extends Tab {
 
         this.key_elements.get(key)!.set(spec.name, element);
         this.key_sections.get(key)!.appendChild(this.create_row(key, spec, element));
+    }
+
+    private set_element_value(key: ConfigKey, name: string, value: VariableValue): void {
+        const control = this.key_elements.get(key)!.get(name)!;
+        if (control instanceof HTMLInputElement && control.type === "checkbox") control.checked = value as boolean;
+        else control.value = String(value);
+
+        const readout = this.slider_readouts.get(control);
+        if (readout) readout.textContent = control.value;
     }
 
     // One row: name, control, the slider's number (sliders only) and the description (IF-07: "shown next to the slider").
