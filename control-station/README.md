@@ -29,6 +29,17 @@ npm run game-manager                 # broker at mqtt://127.0.0.1:1883
 npm run game-manager <broker-url>    # another broker
 ```
 
+## Recorder
+
+The Recorder is a Node.js background process and continues running when the desktop app closes. Install the Control Station dependencies once at the repository root with `npm ci`, then start the Recorder from this folder:
+
+```
+npm run recorder                 # broker at mqtt://127.0.0.1:1883
+npm run recorder -- <broker-url> # another broker
+```
+
+It writes one IF-09 JSONL file per game into `recordings/` in this folder by default. The recording folder and tail duration come from the Control Station variable spec and applied settings (`recording_folder` and `recording_tail_s`). The tail defaults to 2 seconds.
+
 ## Tests and Dec 4 demo
 
 Every test has its inputs in `fixtures/<TEST-ID>/` (input files + a README saying what can be edited) and runs with
