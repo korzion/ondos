@@ -21,6 +21,15 @@ WALL_S = 4  # -y side
 WALL_W = 8  # -x side
 ALL_WALLS = WALL_N | WALL_E | WALL_S | WALL_W
 
+# to_ascii(): every cell is one character, with one character for the wall between two cells
+ASCII_CELL_STEP = 2
+ASCII_WALL = "#"
+ASCII_OPEN = "."
+ASCII_START = "x"
+ASCII_EXIT = "E"
+# (wall flag, text row step, text column step) from a cell to its wall on that side; the text runs from the far row down
+ASCII_WALL_STEPS = ((WALL_N, -1, 0), (WALL_E, 0, 1), (WALL_S, 1, 0), (WALL_W, 0, -1))
+
 Cell = tuple[int, int]  # (row, col)
 
 
@@ -103,6 +112,17 @@ class MazeGrid:
             return None
         return (row, col)
 
+    def to_ascii(self) -> str:
+        """Text drawing of the maze, far (+y) row on top: # wall, . open, x start cell, E exit cell."""
+        text = [[ASCII_OPEN] * (ASCII_CELL_STEP * self.cols + 1) for _ in range(ASCII_CELL_STEP * self.rows + 1)]
+        for row in range(self.rows):
+            for col in range(self.cols):
+                self._draw_cell_walls(text, (row, col))
+        if self.start_cell is not None:
+            self._draw_mark(text, self.start_cell, ASCII_START)
+        self._draw_mark(text, self.exit_cell, ASCII_EXIT)
+        return "\n".join("".join(line) for line in text)
+
     def _is_in_grid(self, cell: Cell) -> bool:
         row, col = cell
         return 0 <= row < self.rows and 0 <= col < self.cols
@@ -146,6 +166,26 @@ class MazeGrid:
 
     def _has_exit_marker_in_exit_cell(self) -> bool:
         return self.cell_of(self.exit_x_mm, self.exit_y_mm) == self.exit_cell
+
+    def _text_position(self, cell: Cell) -> tuple[int, int]:
+        row, col = cell
+        return (ASCII_CELL_STEP * (self.rows - 1 - row) + 1, ASCII_CELL_STEP * col + 1)
+
+    def _draw_cell_walls(self, text: list[list[str]], cell: Cell) -> None:
+        row, col = cell
+        text_row, text_col = self._text_position(cell)
+        for flag, row_step, col_step in ASCII_WALL_STEPS:
+            if not self.walls[row][col] & flag:
+                continue
+            # a wall fills its own character and the corner at each of its two ends
+            for along in (-1, 0, 1):
+                wall_row = text_row + row_step + along * abs(col_step)
+                wall_col = text_col + col_step + along * abs(row_step)
+                text[wall_row][wall_col] = ASCII_WALL
+
+    def _draw_mark(self, text: list[list[str]], cell: Cell, mark: str) -> None:
+        text_row, text_col = self._text_position(cell)
+        text[text_row][text_col] = mark
 
     def _to_json(self) -> dict:
         return {

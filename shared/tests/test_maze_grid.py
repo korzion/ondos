@@ -180,3 +180,25 @@ def test_maze_with_inconsistent_walls_is_not_valid(walls, why):
 ])
 def test_maze_with_inconsistent_start_or_exit_is_not_valid(changes, why):
     assert changed_example(**changes).validate() is False, why
+
+
+def test_to_ascii_draws_the_far_row_on_top_with_walls_start_and_exit():
+    assert MazeGrid.load(str(EXAMPLE_PATH)).to_ascii() == "\n".join([
+        "#####",
+        "#...#",
+        "#.#.#",
+        "#x#E#",
+        "#####",
+    ])
+
+
+def test_to_ascii_of_an_open_room_leaves_the_middle_open():
+    # no wall touches the centre of the room, so nothing is drawn there; without a start cell no x is drawn
+    room = changed_example(walls=((12, 6), (9, 3)), start_cell=None)
+    assert room.to_ascii() == "\n".join([
+        "#####",
+        "#...#",
+        "#...#",
+        "#..E#",
+        "#####",
+    ])
