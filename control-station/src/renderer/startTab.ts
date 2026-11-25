@@ -1,0 +1,164 @@
+import { Tab } from "./tab";
+import { BusClient } from "./busClient";
+import { CS_COMMAND, GAME_STATE, State, Command, Mode, MODE_VALUES, ReplaySpeed, RouteStatus, PLAN_ROUTE, VISION_MAZE, Writer, VISION_EVENT, GAME_WARNING, WarningKind, WallSide } from "@shared/topics";
+import { Payload, Callback } from "@shared/bus/bus";
+
+type CommandArgs = { mode: Mode | null; file: string | null; speed: ReplaySpeed | null };
+
+const MAX_LOG_LINES = 200; // default until log_max_lines comes from the cs variables (VariablesTab)
+
+const ALLOWED_COMMANDS: Record<State, readonly Command[]> = {
+    setup:    ["set_mode", "read_maze", "calibrate_camera", "calibrate_glove"],
+    ready:    ["start", "set_mode", "read_maze", "calibrate_camera", "calibrate_glove"],
+    playing:  ["pause", "stop"],
+    paused:   ["resume", "stop", "read_maze", "calibrate_glove"],
+    finished: ["new_game"],
+    e_stop:   ["clear_e_stop"],
+};
+
+// Which buttons the tab shows, and their text
+const BUTTON_LABELS: Partial<Record<Command, string>> = {
+    start: "Start",
+    pause: "Pause",
+    resume: "Resume",
+    stop: "Stop",
+    new_game: "New game",
+    clear_e_stop: "Clear E-stop",
+    read_maze: "Read maze",
+    calibrate_camera: "Calibrate camera",
+    calibrate_glove: "Calibrate glove",
+};
+
+// Every bus message carries these (IF-03); the log leaves them out. Same list as in shared/bus/bus.ts, which does not export it.
+const ENVELOPE_FIELDS = ["timestamp_s", "seq", "version", "writer"];
+
+// The short text after the topic in a log line.
+function format_log_summary(topic: string, msg: object): string {
+    if (topic === GAME_WARNING) {
+        const warning = msg as { kind: WarningKind; intensity_pct: number };
+        return `${warning.kind} ${warning.intensity_pct}%`;
+    }
+    if (topic === VISION_EVENT) {
+        const hit = msg as { wall_side: WallSide; cell: { row: number; col: number }; impact_speed_mm_s: number };
+        return `wall hit ${hit.wall_side}, cell ${hit.cell.row},${hit.cell.col}, ${hit.impact_speed_mm_s} mm/s`;
+    }
+    // Any other topic, e.g. VariablesTab's errors: every field except the envelope.
+    const fields = Object.fromEntries(Object.entries(msg).filter(([name]) => !ENVELOPE_FIELDS.includes(name)));
+    return JSON.stringify(fields);
+}
+
+export class StartTab extends Tab {
+    private readonly buttons = new Map<Command, HTMLButtonElement>();
+    private readonly mode_select: HTMLSelectElement;
+    private readonly log_list: HTMLUListElement = document.createElement("ul");
+    private current_state: State | null = null;
+    private maze_id: string | null = null;
+    private route: { maze_id: string; status: RouteStatus } | null = null;
+
+    private readonly game_state_callback: Callback = (_topic: string, msg: Payload) => this.update_buttons((msg as {state: State}).state);
+
+    private readonly log_callback: Callback = (topic, msg) => this.add_log(topic, msg as object);
+
+    private readonly maze_callback: Callback = (_topic: string, msg: Payload) => {
+        if ((msg as { writer: Writer }).writer === "replay") return;
+        this.maze_id = (msg as { maze_id: string }).maze_id;
+        this.update_buttons(this.current_state);
+    };
+
+    private readonly route_callback: Callback = (_topic: string, msg: Payload) => {
+        if ((msg as { writer: Writer }).writer === "replay") return;
+        this.route = (msg as { maze_id: string; status: RouteStatus });
+        this.update_buttons(this.current_state);
+    };
+
+    constructor(bus_client: BusClient) {
+        super("Start", bus_client);
+
+        // Set mode
+        this.mode_select = document.createElement("select");
+        for (const mode of MODE_VALUES) {
+            const option = document.createElement("option");
+            option.value = mode;
+            option.textContent = mode;
+            this.mode_select.appendChild(option);
+        }
+        this.root.appendChild(this.mode_select);
+
+        const set_mode_btn = document.createElement("button");
+        set_mode_btn.textContent = "Set mode";
+        set_mode_btn.addEventListener("click", () => this.send_command("set_mode", { mode: this.mode_select.value as Mode }));
+        this.root.appendChild(set_mode_btn);
+        this.buttons.set("set_mode", set_mode_btn);
+
+        // Create buttons
+        for (const [command, name] of Object.entries(BUTTON_LABELS) as [Command, string][]) {
+            const button = document.createElement("button");
+            button.textContent = name;
+            button.addEventListener("click", () => this.send_command(command));
+            this.root.appendChild(button);
+            this.buttons.set(command, button);
+        }
+
+        this.root.appendChild(this.log_list);
+
+        // disable the buttons until state arrives
+        this.update_buttons(null);
+
+        // For logs
+        this.bus_client.subscribe(GAME_WARNING, this.log_callback);
+        this.bus_client.subscribe(VISION_EVENT, this.log_callback);
+    }
+
+    on_open(): void {
+        super.on_open();
+        this.bus_client.subscribe(GAME_STATE, this.game_state_callback);
+        this.bus_client.subscribe(VISION_MAZE, this.maze_callback);
+        this.bus_client.subscribe(PLAN_ROUTE, this.route_callback);
+    }
+
+    on_close(): void {
+        super.on_close();
+        this.bus_client.unsubscribe(GAME_STATE, this.game_state_callback);
+        this.bus_client.unsubscribe(VISION_MAZE, this.maze_callback);
+        this.bus_client.unsubscribe(PLAN_ROUTE, this.route_callback);
+    }
+
+    update_buttons(state: State | null): void {
+        this.current_state = state;
+        const allowed = state === null ? [] : ALLOWED_COMMANDS[state];
+        this.mode_select.disabled = !allowed.includes("set_mode");
+
+        for (const [command, button] of this.buttons) {
+            button.disabled = !allowed.includes(command);
+        }
+
+        this.buttons.get("resume")!.disabled ||= !this.has_valid_route();
+    }
+
+    // Called by ReplayController (#84). file is a name inside the replay tool's recordings folder.
+    start_replay(file: string, speed: ReplaySpeed): void {
+        this.send_command("replay", { file, speed });
+    }
+
+    send_command(cmd: Command, args: Partial<CommandArgs> = {}): void {
+        this.bus_client.publish(CS_COMMAND, { cmd, mode: null, file: null, speed: null, ...args });
+    }
+
+    private has_valid_route(): boolean {
+        return this.route !== null && this.route.status === "valid" && this.route.maze_id === this.maze_id;
+    }
+
+    add_log(topic: string, msg: object): void {
+        const line = document.createElement("li");
+        const time_s = (msg as { timestamp_s?: number }).timestamp_s ?? Date.now() / 1000;
+        const time_text = new Date(time_s * 1000).toLocaleTimeString();
+        const replay_mark = (msg as { writer?: Writer }).writer === "replay" ? "[replay] " : "";
+        line.textContent = `[${time_text}] ${replay_mark}${topic}: ${format_log_summary(topic, msg)}`;
+        this.log_list.prepend(line);
+
+        // Remove old lines if we exceed MAX_LOG_LINES
+        while (this.log_list.childElementCount > MAX_LOG_LINES) {
+            this.log_list.removeChild(this.log_list.lastChild!);
+        }
+    }
+}
