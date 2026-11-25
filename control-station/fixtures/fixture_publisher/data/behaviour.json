@@ -1,0 +1,97 @@
+{
+  "loop_s": 31.0,
+  "start": [
+    {
+      "play": "start.jsonl"
+    },
+    {
+      "streams": [
+        "samples.jsonl",
+        "route_start.jsonl",
+        "controller_start.jsonl",
+        "edit_start.jsonl"
+      ]
+    }
+  ],
+  "commands": {
+    "e_stop": [
+      {
+        "override": {
+          "platform/state": {
+            "tilt_x_deg": 0.0,
+            "tilt_y_deg": 0.0,
+            "applied_tilt_x_deg": 0.0,
+            "applied_tilt_y_deg": 0.0,
+            "is_e_stop": true
+          }
+        }
+      }
+    ],
+    "clear_e_stop": [
+      {
+        "clear_override": [
+          "platform/state"
+        ]
+      }
+    ],
+    "read_maze": [
+      {
+        "play": "read_maze.jsonl"
+      },
+      {
+        "streams": [
+          "samples.jsonl",
+          "route_start.jsonl",
+          "controller_start.jsonl",
+          "edit_rescanning.jsonl"
+        ]
+      },
+      {
+        "after_s": 1.5,
+        "do": [
+          {
+            "streams": [
+              "samples.jsonl",
+              "route_start.jsonl",
+              "controller_start.jsonl",
+              "edit_start.jsonl"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "triggers": {
+    "h": {
+      "description": "A hand enters the playfield: hand_present, the route stops",
+      "do": [
+        {
+          "play": "hand.jsonl"
+        },
+        {
+          "streams": [
+            "samples.jsonl",
+            "controller_start.jsonl",
+            "edit_hand.jsonl"
+          ]
+        }
+      ]
+    },
+    "c": {
+      "description": "The hand leaves: new maze, distance map and route",
+      "do": [
+        {
+          "play": "maze_changed.jsonl"
+        },
+        {
+          "streams": [
+            "samples.jsonl",
+            "route_changed.jsonl",
+            "controller_changed.jsonl",
+            "edit_changed.jsonl"
+          ]
+        }
+      ]
+    }
+  }
+}
