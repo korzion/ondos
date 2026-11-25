@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
 from shared.interfaces import validate_file
 
 JSON_INDENT_SPACES = 2
+CELL_CENTRE_OFFSET_CELLS = 0.5  # a cell centre is half a cell from the cell's origin corner (IF-04)
 
 Cell = tuple[int, int]  # (row, col)
 
@@ -58,6 +60,21 @@ class MazeGrid:
         text = json.dumps(self._to_json(), indent=JSON_INDENT_SPACES) + "\n"
         # newline="\n" keeps LF on Windows too, so the file is byte-identical on every machine
         Path(path).write_text(text, encoding="utf-8", newline="\n")
+
+    def cell_centre_mm(self, row: int, col: int) -> tuple[float, float]:
+        """Centre of a cell in the board frame: columns run along +x, rows along +y."""
+        x_mm = self.origin_x_mm + (col + CELL_CENTRE_OFFSET_CELLS) * self.cell_size_mm
+        y_mm = self.origin_y_mm + (row + CELL_CENTRE_OFFSET_CELLS) * self.cell_size_mm
+        return (x_mm, y_mm)
+
+    def cell_of(self, x_mm: float, y_mm: float) -> Cell | None:
+        """Cell that contains a board-frame point, or None outside the grid."""
+        # floor, not int(): a point just outside the -x or -y border must not round into row or column 0
+        row = math.floor((y_mm - self.origin_y_mm) / self.cell_size_mm)
+        col = math.floor((x_mm - self.origin_x_mm) / self.cell_size_mm)
+        if not (0 <= row < self.rows and 0 <= col < self.cols):
+            return None
+        return (row, col)
 
     def _to_json(self) -> dict:
         return {
