@@ -14,13 +14,17 @@ struct PlatformSettings {
 
 class PlatformController {
  public:
-  // Default left-header pins: GPIO 6 = Mode Button (INPUT_PULLUP), GPIO 7 = Mode LED
-  void begin(int mode_button_pin = 6, int mode_led_pin = 7);
+  static constexpr int MODE_BUTTON_PIN = 6;
+  static constexpr int MODE_LED_PIN = 7;
+
+  // Left-header pins: GPIO 6 = Mode Button (INPUT_PULLUP), GPIO 7 = Mode LED
+  void begin(int mode_button_pin = MODE_BUTTON_PIN, int mode_led_pin = MODE_LED_PIN);
 
   // Sets laptop target tilt (AI or PID mode) and resets the 200 ms command watchdog.
   void setTargetTilt(float target_x_deg, float target_y_deg, uint32_t now_ms);
 
   // Updates active mode/state from HostState, button presses, and laptop-link timeouts.
+  // Safe to call separately before update(now_ms); guards against duplicate runs in the same ms.
   void updateMode(uint32_t now_ms);
 
   // Main control step: enforces safety, timeouts, deadzone/gain, angle & speed limits.
@@ -55,8 +59,8 @@ class PlatformController {
   float clampTilt(float deg) const;
   float slewLimit(float current_deg, float target_deg, float max_step_deg) const;
 
-  int button_pin_ = 6;
-  int led_pin_ = 7;
+  int button_pin_ = MODE_BUTTON_PIN;
+  int led_pin_ = MODE_LED_PIN;
 
   PlatformSettings settings_{};
 
@@ -67,12 +71,18 @@ class PlatformController {
   PlatformSource active_source_ = PlatformSource::None;
   Fault fault_ = Fault::None;
 
-  // Connectivity & timestamps
+  // Explicit reception flags & single-clock (ms) timestamps
   bool ever_received_host_state_ = false;
+  bool ever_received_target_tilt_ = false;
+  bool ever_received_glove_data_ = false;
   uint32_t last_host_state_ms_ = 0;
   uint32_t last_target_tilt_ms_ = 0;
   uint32_t last_glove_data_ms_ = 0;
-  uint32_t last_update_us_ = 0;
+
+  bool has_updated_ = false;
+  uint32_t last_update_ms_ = 0;
+  bool has_mode_updated_ = false;
+  uint32_t last_mode_update_ms_ = 0;
 
   // Standalone (no-laptop) glove enable latch (IF-02)
   bool offline_glove_enabled_ = false;

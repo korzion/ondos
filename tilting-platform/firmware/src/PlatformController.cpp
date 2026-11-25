@@ -20,7 +20,8 @@ void PlatformController::begin(int mode_button_pin, int mode_led_pin) {
   effective_state_ = State::NoLaptop;
   active_source_ = PlatformSource::None;
   offline_glove_enabled_ = false;
-  last_update_us_ = micros();
+  has_updated_ = false;
+  has_mode_updated_ = false;
 }
 
 void PlatformController::onHostState(State state, Mode mode, uint32_t now_ms) {
@@ -36,6 +37,7 @@ void PlatformController::setTargetTilt(float target_x_deg, float target_y_deg, u
   }
   raw_laptop_target_x_ = target_x_deg;
   raw_laptop_target_y_ = target_y_deg;
+  ever_received_target_tilt_ = true;
   last_target_tilt_ms_ = now_ms;
 }
 
@@ -45,6 +47,7 @@ void PlatformController::onGloveData(float hand_tilt_x_deg, float hand_tilt_y_de
   }
   raw_glove_x_ = hand_tilt_x_deg;
   raw_glove_y_ = hand_tilt_y_deg;
+  ever_received_glove_data_ = true;
   last_glove_data_ms_ = now_ms;
 }
 
@@ -100,7 +103,7 @@ bool PlatformController::isLaptopConnected(uint32_t now_ms) const {
 }
 
 bool PlatformController::isGloveConnected(uint32_t now_ms) const {
-  if (last_glove_data_ms_ == 0) return false;
+  if (!ever_received_glove_data_) return false;
   return (now_ms - last_glove_data_ms_) <= GLOVE_DATA_LOSS_MS;
 }
 
@@ -149,6 +152,13 @@ void PlatformController::pollModeButton(uint32_t now_ms) {
 }
 
 void PlatformController::updateMode(uint32_t now_ms) {
+  // Guard against double-triggering edge checks if main.cpp calls updateMode() before update()
+  if (has_mode_updated_ && now_ms == last_mode_update_ms_) {
+    return;
+  }
+  has_mode_updated_ = true;
+  last_mode_update_ms_ = now_ms;
+
   pollModeButton(now_ms);
 
   const bool laptop_ok = isLaptopConnected(now_ms);
@@ -215,10 +225,15 @@ float PlatformController::slewLimit(float current_deg, float target_deg, float m
 }
 
 void PlatformController::update(uint32_t now_ms) {
-  uint32_t now_us = micros();
-  float dt_s = (now_us - last_update_us_) * 1e-6f;
-  last_update_us_ = now_us;
-  if (dt_s <= 0.0f || dt_s > 0.2f) dt_s = 0.02f;
+  float dt_s = 0.02f;
+  if (has_updated_) {
+    const uint32_t delta_ms = now_ms - last_update_ms_;
+    if (delta_ms > 0 && delta_ms <= 200) {
+      dt_s = delta_ms * 1e-3f;
+    }
+  }
+  has_updated_ = true;
+  last_update_ms_ = now_ms;
 
   updateMode(now_ms);
 
@@ -249,7 +264,7 @@ void PlatformController::update(uint32_t now_ms) {
       } else if (current_mode_ == Mode::Ai || current_mode_ == Mode::Simple) {
         // Enforce 200 ms command timeout (A-R5, IF-02)
         const bool target_fresh =
-            (last_target_tilt_ms_ != 0) && ((now_ms - last_target_tilt_ms_) <= COMMAND_TIMEOUT_MS);
+            ever_received_target_tilt_ && ((now_ms - last_target_tilt_ms_) <= COMMAND_TIMEOUT_MS);
         if (target_fresh) {
           next_source = (current_mode_ == Mode::Ai) ? PlatformSource::Ai : PlatformSource::Simple;
           desired_x = raw_laptop_target_x_;
