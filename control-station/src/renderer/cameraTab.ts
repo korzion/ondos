@@ -8,6 +8,8 @@ import { Tab } from "./tab";
 // IF-04: the payload of vision/image is raw JPEG bytes, without the JSON envelope.
 const JPEG_MIME_TYPE = "image/jpeg";
 const NO_IMAGE_TEXT = "No camera image yet";
+const IMAGE_ALT_TEXT = "Camera image";
+const IMAGE_MAX_WIDTH = "100%"; // the 640 px image shrinks with a narrow window
 
 export class CameraTab extends Tab {
     private readonly image_element: HTMLImageElement;
@@ -54,8 +56,8 @@ export class CameraTab extends Tab {
 
     private create_image_element(): HTMLImageElement {
         const element = document.createElement("img");
-        element.alt = "Camera image";
-        element.style.maxWidth = "100%"; // the 640 px image shrinks with a narrow window
+        element.alt = IMAGE_ALT_TEXT;
+        element.style.maxWidth = IMAGE_MAX_WIDTH;
         element.hidden = true;
         this.root.appendChild(element);
         return element;
