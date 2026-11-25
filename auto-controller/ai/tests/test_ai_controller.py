@@ -81,10 +81,20 @@ def test_model_json_must_match_the_file_name(models_dir):
         AIController(models_dir).load("ppo-20261201-1")
 
 
-def test_broken_model_file_cannot_be_loaded(models_dir):
+def not_a_zip(data: bytes) -> bytes:
+    return b"not a zip"
+
+
+def truncated(data: bytes) -> bytes:
+    return data[: len(data) // 2]  # SB3 raises AssertionError for this one, not a file error
+
+
+@pytest.mark.parametrize("break_file", [not_a_zip, truncated])
+def test_broken_model_file_cannot_be_loaded(models_dir, break_file):
     save_model(models_dir, "ppo-20261201-1")
-    (models_dir / "ppo-20261201-1.zip").write_bytes(b"not a zip")
-    with pytest.raises(ModelLoadError):
+    model_path = models_dir / "ppo-20261201-1.zip"
+    model_path.write_bytes(break_file(model_path.read_bytes()))
+    with pytest.raises(ModelLoadError, match="cannot be loaded"):
         AIController(models_dir).load("ppo-20261201-1")
 
 
@@ -92,6 +102,16 @@ def test_model_trained_on_another_observation_is_refused(models_dir):
     other_space = spaces.Dict({"vx_mm_s": spaces.Box(-np.inf, np.inf, (1,), np.float32)})
     save_model(models_dir, "ppo-20261201-1", observation_space=other_space)
     with pytest.raises(ModelLoadError, match="another observation"):
+        AIController(models_dir).load("ppo-20261201-1")
+
+
+@pytest.mark.parametrize("other_action_space", [
+    spaces.Box(-10.0, 10.0, (2,), np.float32),  # would give actions outside −1…1
+    spaces.Box(-1.0, 1.0, (3,), np.float32),    # one action too many
+])
+def test_model_trained_on_another_action_space_is_refused(models_dir, other_action_space):
+    save_model(models_dir, "ppo-20261201-1", action_space=other_action_space)
+    with pytest.raises(ModelLoadError, match="another action space"):
         AIController(models_dir).load("ppo-20261201-1")
 
 
@@ -110,19 +130,10 @@ def test_non_finite_action_is_refused(models_dir, monkeypatch):
             return np.array([np.nan, 0.0], dtype=np.float32), None
 
     monkeypatch.setattr(ai_controller_module.PPO, "load", lambda *args, **kwargs: NanModel())
-    monkeypatch.setattr(ai_controller_module, "_check_observation_space", lambda model, version: None)
+    monkeypatch.setattr(ai_controller_module, "_check_spaces", lambda model, version: None)
     controller.load("ppo-20261201-1")
     with pytest.raises(InvalidActionError):
         controller.act(observation_for(controller))
-
-
-@pytest.mark.parametrize("action, max_tilt_deg, tilt_scale_pct, expected", [
-    ((1.0, -1.0), 10.0, 100.0, (10.0, -10.0)),
-    ((0.5, 0.25), 12.0, 50.0, (3.0, 1.5)),
-    ((0.0, 0.0), 10.0, 100.0, (0.0, 0.0)),
-])
-def test_action_is_scaled_to_degrees(action, max_tilt_deg, tilt_scale_pct, expected):
-    assert AIController.to_target_tilt_deg(action, max_tilt_deg, tilt_scale_pct) == pytest.approx(expected)
 
 
 def test_decision_time_is_far_below_the_budget(models_dir):

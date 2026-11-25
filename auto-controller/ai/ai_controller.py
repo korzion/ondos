@@ -1,20 +1,21 @@
-"""AIController (D.5): loads a trained model and computes the normalized action for an observation."""
+"""AIController (D.5): loads a trained model and computes the normalized action for an observation.
+
+At runtime: act() → ai.common.action_scaling.to_target_tilt_deg() → OutputShaper.shape().
+"""
 from __future__ import annotations
 
 import math
-import zipfile
-from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 from stable_baselines3 import PPO
 
+from ai.common.action_scaling import ACTION_SPACE
 from ai.common.observation_builder import ObservationBuilder
 from ai.model_metadata import ModelLoadError, ModelMetadata, load_model_metadata
 from ai.model_versions import (DEFAULT_MODELS_DIR, is_model_version, metadata_file, model_file,
                                newest_model_version)
 
-PERCENT = 100.0
 MODEL_DEVICE = "cpu"  # a small MLP: the CPU answers well within the 5 ms of D-R3, and no GPU is needed
 
 
@@ -63,7 +64,7 @@ class AIController:
             raise ModelLoadError(f"{version!r} is not a model_version (<method>-<YYYYMMDD>-<n>)")
         metadata = load_model_metadata(metadata_file(self._models_dir, version), version)
         model = _load_policy_file(model_file(self._models_dir, version))
-        _check_observation_space(model, version)
+        _check_spaces(model, version)
         self._model, self._metadata = model, metadata
         self._observation_builder = ObservationBuilder(metadata.observation_scales)
 
@@ -79,26 +80,22 @@ class AIController:
             raise InvalidActionError(f"model {self.model_version} returned a non-finite action {action}")
         return action_x, action_y
 
-    @staticmethod
-    def to_target_tilt_deg(action: Sequence[float], max_tilt_deg: float,
-                           tilt_scale_pct: float) -> tuple[float, float]:
-        """Target tilt in degrees for a normalized action (D.5: scaled by max_tilt_deg; D.7: tilt_scale_pct).
-
-        The result is not clamped: OutputShaper applies the final bounds."""
-        scale_deg = max_tilt_deg * tilt_scale_pct / PERCENT
-        return action[0] * scale_deg, action[1] * scale_deg
-
 
 def _load_policy_file(path: Path) -> PPO:
     if not path.is_file():
         raise ModelLoadError(f"{path}: model file not found")
     try:
         return PPO.load(path, device=MODEL_DEVICE)
-    except (zipfile.BadZipFile, ValueError, KeyError, RuntimeError) as error:
-        raise ModelLoadError(f"{path}: cannot be loaded ({error})") from None
+    except Exception as error:
+        # The file comes from disk and SB3 raises many kinds of errors for a broken one (e.g. AssertionError
+        # for a truncated zip); every one must become ai/status = no_model, never a crash of the App (D.8).
+        raise ModelLoadError(f"{path}: cannot be loaded ({type(error).__name__}: {error})") from None
 
 
-def _check_observation_space(model: PPO, model_version: str) -> None:
-    """A model trained on another observation would get wrong inputs silently, so it is refused."""
+def _check_spaces(model: PPO, model_version: str) -> None:
+    """A model trained on another observation or action space would get wrong inputs or give actions outside
+    −1…1 silently, so it is refused."""
     if model.observation_space != ObservationBuilder.observation_space():
         raise ModelLoadError(f"{model_version} was trained on another observation than ObservationBuilder builds")
+    if model.action_space != ACTION_SPACE:
+        raise ModelLoadError(f"{model_version} was trained on another action space than {ACTION_SPACE}")
