@@ -1,15 +1,15 @@
 {
-  "_help": "Fill in each person's GitHub username. Add any other email they commit with to 'emails'. Names here are what the dashboard shows.",
+  "_help": "Fill in each person's GitHub username. Add any other email they commit with to 'emails'. Names here are what the dashboard shows. 'short' is the name on the issue plan page.",
   "members": [
-    {"name": "Ahmet Arif Aygün",      "github": "arif-aygun", "emails": []},
-    {"name": "Beyzanur Bilir",        "github": "BeyzanurBilir", "emails": []},
-    {"name": "Enis Talha Şahin",      "github": "enistalhasahin", "emails": []},
-    {"name": "Süleyman Mevlid Uzun",  "github": "Smevlid", "emails": []},
-    {"name": "Mohammed Z A Alaklouk", "github": "Mohammed-Alaklouk", "emails": []},
-    {"name": "Talha Tanrıverdi",      "github": "ttalhA0", "emails": []},
-    {"name": "Mert Sezer Güler",      "github": "Mithwindy", "emails": []},
-    {"name": "İbrahim Ahmetoğlu",     "github": "iahm2024", "emails": []},
-    {"name": "Yağmur Gül",            "github": "yagmur-gul", "emails": []},
-    {"name": "Aayan Mustafa",         "github": "rana-aayan", "emails": []}
+    {"name": "Ahmet Arif Aygün",      "short": "Arif",      "github": "arif-aygun", "emails": []},
+    {"name": "Beyzanur Bilir",        "short": "Beyzanur",  "github": "BeyzanurBilir", "emails": []},
+    {"name": "Enis Talha Şahin",      "short": "Enis",      "github": "enistalhasahin", "emails": []},
+    {"name": "Süleyman Mevlid Uzun",  "short": "Süleyman",  "github": "Smevlid", "emails": []},
+    {"name": "Mohammed Z A Alaklouk", "short": "Mohammed",  "github": "Mohammed-Alaklouk", "emails": []},
+    {"name": "Talha Tanrıverdi",      "short": "Talha T.",  "github": "ttalhA0", "emails": []},
+    {"name": "Mert Sezer Güler",      "short": "Mert",      "github": "Mithwindy", "emails": []},
+    {"name": "İbrahim Ahmetoğlu",     "short": "İbrahim",   "github": "iahm2024", "emails": []},
+    {"name": "Yağmur Gül",            "short": "Yağmur",    "github": "yagmur-gul", "emails": []},
+    {"name": "Aayan Mustafa",         "short": "Aayan",     "github": "rana-aayan", "emails": []}
   ]
 }
