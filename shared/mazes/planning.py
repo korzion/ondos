@@ -3,15 +3,11 @@ from __future__ import annotations
 
 from collections import deque
 
-from shared.mazes.maze_grid import WALL_E, WALL_N, WALL_S, WALL_W, Cell, MazeGrid
+from shared.mazes.maze_grid import NEIGHBOUR_STEPS, Cell, MazeGrid
 from shared.mazes.route import ROUTE_INVALID, ROUTE_NO_PATH, ROUTE_VALID, Route
 
 UNREACHABLE_STEPS = -1  # plan/distance_map: no path from this cell to the exit
 MAX_ROUTE_POINTS = 3    # plan/route carries up to 3 points
-
-# (wall flag, row step, col step) to the neighbour on that side, in the order N, E, S, W.
-# The route breaks ties in this order, so every maze and ball cell has exactly one route (IF-04).
-NEIGHBOUR_STEPS = ((WALL_N, 1, 0), (WALL_E, 0, 1), (WALL_S, -1, 0), (WALL_W, 0, -1))
 
 
 def build_distance_map(maze: MazeGrid) -> list[list[int]]:

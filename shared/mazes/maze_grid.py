@@ -21,14 +21,18 @@ WALL_S = 4  # -y side
 WALL_W = 8  # -x side
 ALL_WALLS = WALL_N | WALL_E | WALL_S | WALL_W
 
+# (wall flag, row step, col step) to the neighbour on that side, in the order N, E, S, W.
+# The route breaks ties in this order, so every maze and ball cell has exactly one route (IF-04).
+NEIGHBOUR_STEPS = ((WALL_N, 1, 0), (WALL_E, 0, 1), (WALL_S, -1, 0), (WALL_W, 0, -1))
+
 # to_ascii(): every cell is one character, with one character for the wall between two cells
 ASCII_CELL_STEP = 2
+ASCII_BORDER = 1              # the outer border takes one character before the first cell
+ASCII_WALL_SPAN = (-1, 0, 1)  # a wall fills its own character and the corner at each of its two ends
 ASCII_WALL = "#"
 ASCII_OPEN = "."
 ASCII_START = "x"
 ASCII_EXIT = "E"
-# (wall flag, text row step, text column step) from a cell to its wall on that side; the text runs from the far row down
-ASCII_WALL_STEPS = ((WALL_N, -1, 0), (WALL_E, 0, 1), (WALL_S, 1, 0), (WALL_W, 0, -1))
 
 Cell = tuple[int, int]  # (row, col)
 
@@ -114,7 +118,9 @@ class MazeGrid:
 
     def to_ascii(self) -> str:
         """Text drawing of the maze, far (+y) row on top: # wall, . open, x start cell, E exit cell."""
-        text = [[ASCII_OPEN] * (ASCII_CELL_STEP * self.cols + 1) for _ in range(ASCII_CELL_STEP * self.rows + 1)]
+        text_rows = ASCII_CELL_STEP * self.rows + ASCII_BORDER
+        text_cols = ASCII_CELL_STEP * self.cols + ASCII_BORDER
+        text = [[ASCII_OPEN] * text_cols for _ in range(text_rows)]
         for row in range(self.rows):
             for col in range(self.cols):
                 self._draw_cell_walls(text, (row, col))
@@ -169,17 +175,17 @@ class MazeGrid:
 
     def _text_position(self, cell: Cell) -> tuple[int, int]:
         row, col = cell
-        return (ASCII_CELL_STEP * (self.rows - 1 - row) + 1, ASCII_CELL_STEP * col + 1)
+        # the far row is the first line of the text, so a higher row is a lower text row
+        return (ASCII_CELL_STEP * (self.rows - 1 - row) + ASCII_BORDER, ASCII_CELL_STEP * col + ASCII_BORDER)
 
     def _draw_cell_walls(self, text: list[list[str]], cell: Cell) -> None:
         row, col = cell
         text_row, text_col = self._text_position(cell)
-        for flag, row_step, col_step in ASCII_WALL_STEPS:
+        for flag, row_step, col_step in NEIGHBOUR_STEPS:
             if not self.walls[row][col] & flag:
                 continue
-            # a wall fills its own character and the corner at each of its two ends
-            for along in (-1, 0, 1):
-                wall_row = text_row + row_step + along * abs(col_step)
+            for along in ASCII_WALL_SPAN:
+                wall_row = text_row - row_step + along * abs(col_step)
                 wall_col = text_col + col_step + along * abs(row_step)
                 text[wall_row][wall_col] = ASCII_WALL
 
