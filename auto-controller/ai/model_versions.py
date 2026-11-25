@@ -2,6 +2,8 @@
 
 A model is <model_version>.zip (a Stable-Baselines3 PPO file) with <model_version>.json beside it.
 model_version is <method>-<YYYYMMDD>-<n>, e.g. ppo-20261201-2; the method gives the policy kind.
+n counts the models of one day across both methods (bc-20261201-1, then ppo-20261201-2), so the newest
+model is the one with the latest date and, on that date, the highest n.
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ MODEL_FILE_SUFFIX = ".zip"
 METADATA_FILE_SUFFIX = ".json"
 MODEL_VERSION_PATTERN = re.compile(r"^(?P<method>ppo|bc)-(?P<date>\d{8})-(?P<number>\d+)$")
 # ai/status policy (IF-06) of each training method: PPO = reinforcement learning, BC = behaviour cloning.
+# ASSUMPTION (#64): D.5 only shows the method ppo; bc is the method name of the step 1 (imitation) models.
 POLICY_BY_METHOD = {"ppo": "rl", "bc": "imitation"}
 
 
