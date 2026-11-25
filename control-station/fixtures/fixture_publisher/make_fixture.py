@@ -25,7 +25,6 @@ INPUT_DIR, DATA_DIR = HERE / "inputs", HERE / "data"
 MAZE_FILES = ("maze.txt", "maze_after_change.txt")
 MAZE_IDS = ("demo", "demo-changed")
 BALL_HZ, PLATFORM_HZ, AI_STATUS_HZ, EDIT_STATE_HZ, VISION_STATUS_HZ = 30, 50, 10, 1, 1
-WALL_THICKNESS_MM, WALL_HEIGHT_MM, EXIT_RADIUS_MM, BALL_DIAMETER_MM = 4.0, 10.0, 8.0, 12.0
 NORTH, EAST, SOUTH, WEST = 1, 2, 4, 8
 SIDES = ((NORTH, 1, 0), (EAST, 0, 1), (SOUTH, -1, 0), (WEST, 0, -1))  # flag, row step, col step
 UNREACHABLE = -1
@@ -33,7 +32,6 @@ ROUTE_POINTS_MAX = 3
 DECIMALS = 3
 HAND_STATE, RESCAN_STATE, CLEAR_STATE = "hand_present", "rescanning", "clear"
 ENVELOPE = {"timestamp_s": 0.0, "seq": 0, "version": 1}
-GAME_ID = "20261204-140500"
 
 
 class FixtureError(Exception):
@@ -41,8 +39,9 @@ class FixtureError(Exception):
 
 
 # ---------------------------------------------------------------------- maze
-def parse_maze(text: str, maze_id: str, cell_size_mm: float, name: str) -> dict:
+def parse_maze(text: str, maze_id: str, platform: dict, name: str) -> dict:
     """The vision/maze fields (without source) of a text grid with a wall or open mark between and around cells."""
+    cell_size_mm = platform["cell_size_mm"]
     lines = [line.rstrip() for line in text.splitlines() if line.strip()]
     if len(lines) % 2 == 0 or any(len(line) != len(lines[0]) for line in lines) or len(lines[0]) % 2 == 0:
         raise FixtureError(f"{name}: needs an odd number of lines of one odd length (2 x cells + 1)")
@@ -55,11 +54,11 @@ def parse_maze(text: str, maze_id: str, cell_size_mm: float, name: str) -> dict:
     exit_cell = {"row": exit_[0], "col": exit_[1]}
     origin_x_mm, origin_y_mm = -cols * cell_size_mm / 2, -rows * cell_size_mm / 2
     maze = {"maze_id": maze_id, "cell_size_mm": cell_size_mm, "rows": rows, "cols": cols, "origin_x_mm": origin_x_mm,
-            "origin_y_mm": origin_y_mm, "walls": walls, "wall_thickness_mm": WALL_THICKNESS_MM,
-            "wall_height_mm": WALL_HEIGHT_MM, "start_cell": {"row": start[0], "col": start[1]}, "exit_cell": exit_cell}
+            "origin_y_mm": origin_y_mm, "walls": walls, "wall_thickness_mm": platform["wall_thickness_mm"],
+            "wall_height_mm": platform["wall_height_mm"], "start_cell": {"row": start[0], "col": start[1]}, "exit_cell": exit_cell}
     exit_x_mm, exit_y_mm = cell_centre_mm(maze, exit_cell)
-    return {**maze, "exit_x_mm": exit_x_mm, "exit_y_mm": exit_y_mm, "exit_radius_mm": EXIT_RADIUS_MM,
-            "ball_diameter_mm": BALL_DIAMETER_MM}
+    return {**maze, "exit_x_mm": exit_x_mm, "exit_y_mm": exit_y_mm, "exit_radius_mm": platform["exit_radius_mm"],
+            "ball_diameter_mm": platform["ball_diameter_mm"]}
 
 
 def _check_frame(grid: list[str], rows: int, cols: int, name: str) -> None:
@@ -237,7 +236,7 @@ def controller_stream(maze: dict, steps: list[list[int]], track: BallTrack) -> l
 
 
 def edit_state_message(state: str, reason: str | None, maze_id: str | None) -> dict:
-    return {"state": state, "maze_id": maze_id, "game_id": GAME_ID, "reason": reason}
+    return {"state": state, "maze_id": maze_id, "game_id": None, "reason": reason}
 
 
 
@@ -338,16 +337,24 @@ def read_inputs() -> tuple[list[dict], dict, dict]:
 
     platform, path = read_json("platform.json"), read_json("ball_path.json")
     try:
-        mazes = [parse_maze((INPUT_DIR / name).read_text(encoding="utf-8"), maze_id, platform["cell_size_mm"], name)
+        mazes = [parse_maze((INPUT_DIR / name).read_text(encoding="utf-8"), maze_id, platform, name)
                  for name, maze_id in zip(MAZE_FILES, MAZE_IDS)]
     except (OSError, KeyError) as error:
         raise FixtureError(f"maze or platform input: {error}") from None
     first, second = mazes
     if (first["rows"], first["cols"], first["exit_cell"]) != (second["rows"], second["cols"], second["exit_cell"]):
         raise FixtureError("the two mazes must have the same size and the same exit (the ball samples are shared)")
-    for row, col in path["cells"]:
+    if first["ball_diameter_mm"] >= first["cell_size_mm"] - first["wall_thickness_mm"]:
+        raise FixtureError("platform.json: ball_diameter_mm does not fit between two walls (cell_size_mm - wall_thickness_mm)")
+    if first["exit_radius_mm"] > first["cell_size_mm"] / 2:
+        raise FixtureError("platform.json: exit_radius_mm is larger than half a cell")
+    cells = [tuple(cell) for cell in path["cells"]]
+    for row, col in cells:
         if cell_at_mm(first, *cell_centre_mm(first, {"row": row, "col": col})) is None:
             raise FixtureError(f"ball_path.json: cell ({row},{col}) is outside the maze")
+    for before, after in zip(cells, cells[1:]):
+        if before != after and after not in open_neighbours(first, *before):
+            raise FixtureError(f"ball_path.json: {before} to {after} crosses a wall (first maze)")
     return mazes, path, platform
 
 

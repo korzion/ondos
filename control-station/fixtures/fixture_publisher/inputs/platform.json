@@ -1,5 +1,9 @@
 {
-  "cell_size_mm": 40.0,
+  "cell_size_mm": 25.0,
+  "wall_thickness_mm": 2.0,
+  "wall_height_mm": 10.0,
+  "ball_diameter_mm": 14.0,
+  "exit_radius_mm": 8.0,
   "tilt_limit_deg": 10.0,
   "tilt_gain_deg_per_mm": 0.15,
   "rescan_s": 1.5,

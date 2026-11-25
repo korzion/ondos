@@ -1,4 +1,4 @@
-{"t_s":0.0,"topic":"vision/edit_state","msg":{"state":"rescanning","maze_id":null,"game_id":"20261204-140500","reason":null}}
-{"t_s":1.5,"topic":"vision/maze","msg":{"maze_id":"demo","cell_size_mm":40.0,"rows":3,"cols":3,"origin_x_mm":-60.0,"origin_y_mm":-60.0,"walls":[[13,5,6],[12,5,3],[9,5,7]],"wall_thickness_mm":4.0,"wall_height_mm":10.0,"start_cell":{"row":0,"col":0},"exit_cell":{"row":2,"col":2},"exit_x_mm":40.0,"exit_y_mm":40.0,"exit_radius_mm":8.0,"ball_diameter_mm":12.0,"source":"scan"}}
-{"t_s":1.5,"topic":"plan/distance_map","msg":{"maze_id":"demo","rows":3,"cols":3,"steps":[[8,7,6],[3,4,5],[2,1,0]]}}
-{"t_s":1.5,"topic":"vision/edit_state","msg":{"state":"clear","maze_id":"demo","game_id":"20261204-140500","reason":null}}
+{"t_s":0.0,"topic":"vision/edit_state","msg":{"state":"rescanning","maze_id":null,"game_id":null,"reason":null}}
+{"t_s":1.5,"topic":"vision/maze","msg":{"maze_id":"demo","cell_size_mm":25.0,"rows":8,"cols":8,"origin_x_mm":-100.0,"origin_y_mm":-100.0,"walls":[[13,5,4,5,6,12,5,7],[12,5,3,14,10,9,5,6],[8,7,14,8,3,14,12,3],[10,13,2,8,4,3,8,7],[10,13,1,3,10,12,0,7],[10,12,6,13,1,2,9,6],[10,11,9,4,5,1,7,10],[11,13,5,3,13,5,5,3]],"wall_thickness_mm":2.0,"wall_height_mm":10.0,"start_cell":{"row":7,"col":0},"exit_cell":{"row":0,"col":7},"exit_x_mm":87.5,"exit_y_mm":-87.5,"exit_radius_mm":8.0,"ball_diameter_mm":14.0,"source":"scan"}}
+{"t_s":1.5,"topic":"plan/distance_map","msg":{"maze_id":"demo","rows":8,"cols":8,"steps":[[23,22,21,20,19,2,1,0],[24,23,22,17,18,3,4,5],[25,26,19,16,17,16,7,6],[26,19,18,15,14,15,8,9],[27,18,17,16,13,10,9,10],[28,17,16,13,12,11,10,11],[29,18,15,14,13,12,13,12],[30,17,16,15,16,15,14,13]]}}
+{"t_s":1.5,"topic":"vision/edit_state","msg":{"state":"clear","maze_id":"demo","game_id":null,"reason":null}}
