@@ -70,8 +70,10 @@ export class StatusPanel {
     private readonly sections: Map<StatusTopic, HTMLDivElement> = new Map();
 
     constructor(bus_client: BusClient, root: HTMLDivElement) {
+        root.classList.add("status-panel");
         for (const topic of STATUS_TOPICS) {
             const section = document.createElement("div");
+            section.className = "status-line";
             root.appendChild(section);
             this.sections.set(topic, section);
 
@@ -87,7 +89,9 @@ export class StatusPanel {
         const section = this.sections.get(topic)!;
         const replay_mark = (msg as { writer?: Writer }).writer === "replay" ? " (replay)" : "";
         section.textContent = format_status(topic, msg) + replay_mark;
-        section.hidden = false; // a new message ends a "missing" state
+        // A new message ends a "missing" state.
+        section.hidden = false;
+        section.classList.remove("is-missing");
     }
 
     // Called by TopicHealthMonitor (#83)
@@ -100,5 +104,6 @@ export class StatusPanel {
         }
 
         section.textContent = MISSING_TEXT[topic];
+        section.classList.add("is-missing"); // shown in red, so a missing source stands out
     }
 }

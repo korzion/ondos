@@ -17,8 +17,16 @@ const ALLOWED_COMMANDS: Record<State, readonly Command[]> = {
     e_stop:   ["clear_e_stop"],
 };
 
-// Which buttons the tab shows, and their text
+// The game-command buttons in the order the tab shows them, one row each: game, then maze and
+// calibration. Set mode has its own row next to the mode select.
+const COMMAND_ROWS: readonly (readonly Command[])[] = [
+    ["start", "pause", "resume", "stop", "new_game", "clear_e_stop"],
+    ["read_maze", "calibrate_camera", "calibrate_glove"],
+];
+
+// Button text for each command
 const BUTTON_LABELS: Partial<Record<Command, string>> = {
+    set_mode: "Set mode",
     start: "Start",
     pause: "Pause",
     resume: "Resume",
@@ -48,9 +56,15 @@ function format_log_summary(topic: string, msg: object): string {
     return JSON.stringify(fields);
 }
 
+function create_row(): HTMLDivElement {
+    const row = document.createElement("div");
+    row.className = "command-row";
+    return row;
+}
+
 export class StartTab extends Tab {
     private readonly buttons = new Map<Command, HTMLButtonElement>();
-    private readonly mode_select: HTMLSelectElement;
+    private readonly mode_select: HTMLSelectElement = document.createElement("select");
     private readonly log_list: HTMLUListElement = document.createElement("ul");
     private current_state: State | null = null;
     private maze_id: string | null = null;
@@ -75,36 +89,18 @@ export class StartTab extends Tab {
 
     constructor(bus_client: BusClient) {
         super("Start", bus_client);
+        this.root.classList.add("start-tab");
 
-        // Set mode
-        this.mode_select = document.createElement("select");
-        for (const mode of MODE_VALUES) {
-            const option = document.createElement("option");
-            option.value = mode;
-            option.textContent = mode;
-            this.mode_select.appendChild(option);
-        }
-        this.root.appendChild(this.mode_select);
-
-        const set_mode_btn = document.createElement("button");
-        set_mode_btn.textContent = "Set mode";
-        set_mode_btn.addEventListener("click", () => this.send_command("set_mode", { mode: this.mode_select.value as Mode }));
-        this.root.appendChild(set_mode_btn);
-        this.buttons.set("set_mode", set_mode_btn);
-
-        // Create buttons
-        for (const [command, name] of Object.entries(BUTTON_LABELS) as [Command, string][]) {
-            const button = document.createElement("button");
-            button.textContent = name;
-            button.addEventListener("click", () => this.send_command(command));
-            this.root.appendChild(button);
-            this.buttons.set(command, button);
+        this.root.appendChild(this.create_mode_row());
+        for (const commands of COMMAND_ROWS) {
+            this.root.appendChild(this.create_command_row(commands));
         }
 
         const status_panel_root = document.createElement("div");
         this.root.appendChild(status_panel_root);
         this.status_panel = new StatusPanel(bus_client, status_panel_root);
 
+        this.log_list.className = "log-list";
         this.root.appendChild(this.log_list);
 
         // disable the buttons until state arrives
@@ -150,12 +146,45 @@ export class StartTab extends Tab {
         this.bus_client.publish(CS_COMMAND, { cmd, mode: null, file: null, speed: null, ...args });
     }
 
+    private create_mode_row(): HTMLDivElement {
+        const row = create_row();
+        this.mode_select.className = "mode-select";
+        for (const mode of MODE_VALUES) {
+            const option = document.createElement("option");
+            option.value = mode;
+            option.textContent = mode;
+            this.mode_select.appendChild(option);
+        }
+        row.appendChild(this.mode_select);
+        row.appendChild(this.create_button("set_mode", () => this.send_command("set_mode", { mode: this.mode_select.value as Mode })));
+        return row;
+    }
+
+    private create_command_row(commands: readonly Command[]): HTMLDivElement {
+        const row = create_row();
+        for (const command of commands) {
+            row.appendChild(this.create_button(command, () => this.send_command(command)));
+        }
+        return row;
+    }
+
+    // Registers the button in this.buttons, so update_buttons() greys it out by the IF-07 table.
+    private create_button(command: Command, on_click: () => void): HTMLButtonElement {
+        const button = document.createElement("button");
+        button.className = "command-button";
+        button.textContent = BUTTON_LABELS[command] ?? command;
+        button.addEventListener("click", on_click);
+        this.buttons.set(command, button);
+        return button;
+    }
+
     private has_valid_route(): boolean {
         return this.route !== null && this.route.status === "valid" && this.route.maze_id === this.maze_id;
     }
 
     add_log(topic: string, msg: object): void {
         const line = document.createElement("li");
+        line.className = "log-line";
         const time_s = (msg as { timestamp_s?: number }).timestamp_s ?? Date.now() / 1000;
         const time_text = new Date(time_s * 1000).toLocaleTimeString();
         const replay_mark = (msg as { writer?: Writer }).writer === "replay" ? "[replay] " : "";
