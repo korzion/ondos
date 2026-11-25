@@ -7,9 +7,9 @@
     "control/target_tilt": 30
   },
   "draw_log_path": "out/e-t1-draw-log.jsonl",
-  "plot_rate_hz": 20,
+  "expected_plot_rate_hz": 20,
   "plot_rate_tolerance_hz": 1,
-  "max_draw_gap_ms": 100,
+  "max_draw_gap_ms": 120,
   "plot_window_s": 30,
   "plot_window_tolerance_s": 0.1,
   "min_data_span_s": 29

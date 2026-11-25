@@ -61,16 +61,8 @@ export class Plot {
         this.chart!.setData(this.chart_data(), false);
         // The right edge is the newest sample, not the clock, so the time axis stops when the data stops.
         const newest_s = this.times_s[this.times_s.length - 1];
-        const oldest_s = this.times_s[0];
         this.chart!.setScale("x", { min: newest_s - this.window_s, max: newest_s });
         this.has_new_data = false;
-        log_draw({
-            plot: this.name,
-            x_min_s: newest_s - this.window_s,
-            x_max_s: newest_s,
-            oldest_s,
-            points: this.times_s.length,
-        });
     }
 
     private drop_samples_older_than(cutoff_s: number): void {
@@ -92,12 +84,20 @@ export class Plot {
         this.has_new_data = true;
     }
 
+    // Logs what uPlot really shows. It reads the scale from uPlot, so a wrong setScale in draw() shows in the log (E-T1).
+    private log_chart_draw(chart: uPlot): void {
+        const { min, max } = chart.scales.x;
+        if (min == null || max == null || this.times_s.length === 0) return;
+        log_draw({ plot: this.name, x_min_s: min, x_max_s: max, oldest_s: this.times_s[0], points: this.times_s.length });
+    }
+
     private chart_options(): uPlot.Options {
         const fields = [...this.values_by_field.keys()];
         return {
             width: this.container.clientWidth,
             height: PLOT_HEIGHT_PX,
             scales: { x: { time: true } },
+            hooks: { draw: [(chart) => this.log_chart_draw(chart)] },
             axes: [
                 { stroke: AXIS_COLOR, grid: { stroke: GRID_COLOR } },
                 { stroke: AXIS_COLOR, grid: { stroke: GRID_COLOR } },

@@ -23,7 +23,7 @@ suite = TestSuite(__file__)
 MODULE_DIR = Path(__file__).resolve().parent
 EXAMPLE_MESSAGES = MODULE_DIR.parent / "shared" / "interfaces" / "examples" / "messages.json"
 ENVELOPE_FIELDS = ("timestamp_s", "seq", "version", "writer")  # filled in by the playback tool
-S_PER_MS = 0.001
+MS_PER_S = 1000
 
 # E-T1: the two fields of each plotted topic that the fixture moves (the ones PlotsTab draws).
 MOVING_FIELDS = {
@@ -50,7 +50,9 @@ def e_t1_fixture_lines(params: dict) -> list[dict]:
         x_field, y_field = MOVING_FIELDS[topic]
         payload = example_payload(topic)
         for i in range(int(params["play_duration_s"] * rate_hz)):
-            t_s = i / rate_hz
+            t_s = i / rate_hz  # one message every 1 / rate_hz seconds
+            # x follows sin and y follows cos of the same phase, so the point runs on a circle and both
+            # plotted lines keep moving. One turn takes FIXTURE_PERIOD_S.
             phase = 2 * math.pi * t_s / FIXTURE_PERIOD_S
             msg = {**payload, x_field: FIXTURE_AMPLITUDE * math.sin(phase), y_field: FIXTURE_AMPLITUDE * math.cos(phase)}
             lines.append({"t_s": t_s, "topic": topic, "msg": msg})
@@ -73,7 +75,16 @@ def play_e_t1_fixture(t, params: dict) -> tuple[float, float]:
 def read_draw_log(path: Path) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(f"draw log {path} not found: was the app started with ONDOS_DRAW_LOG?")
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    log = []
+    for number, line in enumerate(lines, 1):
+        try:
+            log.append(json.loads(line))
+        except json.JSONDecodeError:
+            # The app may still be writing the last line while the test reads. Any other broken line is an error.
+            if number < len(lines):
+                raise
+    return log
 
 
 def check_plot_draws(t, topic: str, draws: list[dict], start_s: float, params: dict) -> None:
@@ -81,13 +92,17 @@ def check_plot_draws(t, topic: str, draws: list[dict], start_s: float, params: d
     if not t.check(f"{topic}: plot was redrawn", len(draws) >= 2, f"{len(draws)} draws"):
         return
     times_s = [d["t_s"] for d in draws]
+    # N draws leave N - 1 intervals between the first and the last one.
     rate_hz = (len(draws) - 1) / (times_s[-1] - times_s[0])
-    gap_ms = max(b - a for a, b in zip(times_s, times_s[1:])) / S_PER_MS
-    t.check(f"{topic}: mean draw rate", abs(rate_hz - params["plot_rate_hz"]) <= params["plot_rate_tolerance_hz"],
-            f"{rate_hz:.1f} Hz, wanted {params['plot_rate_hz']} ± {params['plot_rate_tolerance_hz']}")
+    # zip(times_s, times_s[1:]) pairs every draw with the next one, so b - a is one gap.
+    gap_ms = max(b - a for a, b in zip(times_s, times_s[1:])) * MS_PER_S
+    wanted_hz = params["expected_plot_rate_hz"]
+    t.check(f"{topic}: mean draw rate", abs(rate_hz - wanted_hz) <= params["plot_rate_tolerance_hz"],
+            f"{rate_hz:.1f} Hz, wanted {wanted_hz} ± {params['plot_rate_tolerance_hz']}")
     t.check(f"{topic}: longest gap between draws", gap_ms <= params["max_draw_gap_ms"],
             f"{gap_ms:.0f} ms, at most {params['max_draw_gap_ms']}")
 
+    # The window is full only after plot_window_s of the game; before that it holds less data than the axis shows.
     settled = [d for d in draws if d["t_s"] >= start_s + params["plot_window_s"]]
     if not t.check(f"{topic}: plot still drawn after the first {params['plot_window_s']} s", bool(settled)):
         return
