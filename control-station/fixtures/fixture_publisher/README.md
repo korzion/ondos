@@ -68,7 +68,7 @@ The generator checks its output before it writes: every cell of a distance map i
 | `b`, `v`, `a` | bridge, vision, auto_controller go offline (capital letter: back online) |
 | `q` | Quit |
 
-`h`, `c` and the commands are defined in `behaviour.json`; `n`, `y` and the program keys are built in. Notes: `c` always plays the second maze (pressing it twice repeats it). `read_maze` reads the first maze again. `ball_seq` in `plan/route` is the sample number inside the loop.
+`h`, `c` and the commands are defined in `behaviour.json`; `n`, `y` and the program keys are built in. Notes: `c` always plays the second maze (pressing it twice repeats it). `read_maze` reads the first maze again. `ball_seq` in `plan/route` is the sample number inside the loop. The ball waits 6 s in the start cell and GameManager gives `not_moving` after 3 s without movement, so press Start in the last 3 s of the wait, or expect a `not_moving` warning before the ball leaves the cell (correct behaviour).
 
 ## Tests
 
