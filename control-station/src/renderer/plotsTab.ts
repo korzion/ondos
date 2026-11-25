@@ -83,7 +83,7 @@ export class PlotsTab extends Tab {
         panel.append(heading, chart_container);
         this.root.appendChild(panel);
 
-        const topic_plot: TopicPlot = { plot: new Plot(chart_container, plot_window_s), panel, fields: new Set() };
+        const topic_plot: TopicPlot = { plot: new Plot(chart_container, plot_window_s, topic), panel, fields: new Set() };
         this.topic_plots.set(topic, topic_plot);
         this.bus_client.subscribe(topic, this.handle_message);
         return topic_plot;

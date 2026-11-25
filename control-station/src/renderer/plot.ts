@@ -2,6 +2,7 @@
 // and draws it with uPlot (E.5 "Plot").
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
+import { log_draw } from "./drawLog";
 
 const PLOT_HEIGHT_PX = 160;
 const SERIES_COLORS = ["#4fc3f7", "#ffb74d", "#81c784", "#e57373", "#ba68c8", "#fff176"];
@@ -13,15 +14,17 @@ type Message = Record<string, unknown>;
 export class Plot {
     private readonly container: HTMLElement;
     private readonly window_s: number;
+    private readonly name: string; // only for the draw log (E-T1)
     private readonly times_s: number[] = [];
     private readonly values_by_field = new Map<string, (number | null)[]>();
     private chart: uPlot | null = null;
     private is_chart_outdated = false;
     private has_new_data = false;
 
-    constructor(container: HTMLElement, window_s: number) {
+    constructor(container: HTMLElement, window_s: number, name = "") {
         this.container = container;
         this.window_s = window_s;
+        this.name = name;
     }
 
     add_field(field: string): void {
@@ -81,12 +84,20 @@ export class Plot {
         this.has_new_data = true;
     }
 
+    // Logs what uPlot really shows. It reads the scale from uPlot, so a wrong setScale in draw() shows in the log (E-T1).
+    private log_chart_draw(chart: uPlot): void {
+        const { min, max } = chart.scales.x;
+        if (min == null || max == null || this.times_s.length === 0) return;
+        log_draw({ plot: this.name, x_min_s: min, x_max_s: max, oldest_s: this.times_s[0], points: this.times_s.length });
+    }
+
     private chart_options(): uPlot.Options {
         const fields = [...this.values_by_field.keys()];
         return {
             width: this.container.clientWidth,
             height: PLOT_HEIGHT_PX,
             scales: { x: { time: true } },
+            hooks: { draw: [(chart) => this.log_chart_draw(chart)] },
             axes: [
                 { stroke: AXIS_COLOR, grid: { stroke: GRID_COLOR } },
                 { stroke: AXIS_COLOR, grid: { stroke: GRID_COLOR } },
