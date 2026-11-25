@@ -143,7 +143,6 @@ export class Recorder {
     }
     if (name === "recording_tail_s" && typeof value === "number" && Number.isFinite(value) && value >= 0) {
       this.recordingTailS = value;
-      this.activeRecordingTailS = value;
     }
   }
 
