@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ondos Issue Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try{const t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+<style>
+/* Design by Yağmur Gül: a dependency map read like a production schedule, stages left to right, one lane per module.
+   This version reads data.json (built by collect_plan.py) so issue and pull request states stay current.
+   Orange is only the selection; status colours: green done, blue pull request, amber needs attention. */
+:root{color-scheme:light dark;--bg:light-dark(#e9eaec,#141517);--ink:light-dark(#0b0b0c,#e9eaec);--mut:light-dark(#5d6066,#9a9da3);
+--card:light-dark(#ffffff,#1f2124);--line:light-dark(#c9cbcf,#34373c);--lane:light-dark(#dfe0e3,#1a1c1f);--acc:#ff4f00;--acc2:light-dark(#c23b00,#ff7a3d);
+--ok:light-dark(#1f7a4d,#4cc38a);--pr:light-dark(#1d5fd1,#6ea0ff);--warn:light-dark(#9a5700,#e9ae55)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Geist,system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(24px,4vw,56px) max(5vw,16px)}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:clamp(30px,4.4vw,46px);line-height:1.05;font-weight:600;margin:0 0 12px;text-wrap:balance;letter-spacing:-.01em;padding-right:150px}
+h2{font-size:24px;line-height:1.2;margin:0 0 14px;font-weight:600}
+p{margin:0 0 12px;max-width:70ch}.mut{color:var(--mut)}.small{font-size:13px}
+.tools{position:fixed;top:12px;right:12px;z-index:10;display:flex;gap:6px}
+.tools button{min-height:40px;padding:0 12px;font-size:14px;font-weight:500;box-shadow:0 1px 4px rgb(0 0 0/.15)}
+.figs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:20px 0 0}
+.figs div{background:var(--bg);padding:14px 16px}.figs b{display:block;font-size:clamp(26px,3.4vw,36px);font-weight:500;line-height:1.1}
+.figs span{font-size:13px;color:var(--mut)}
+.prog{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin:16px 0 0;font-size:13px}
+.prog .t{display:block;height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}.prog .t i{display:block;height:100%;background:var(--ok)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.bar .sep{width:1px;height:28px;background:var(--line);margin:0 4px}
+button{font:inherit;font-size:15px;min-height:44px;padding:0 16px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer}
+button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,.c:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.go{all:unset;cursor:pointer}.go:hover{text-decoration:underline}
+.mapbox{position:relative;overflow:auto;border:1px solid var(--line);background:var(--card);border-radius:10px;max-height:78vh}
+#map{position:relative}
+#map svg{position:absolute;inset:0;pointer-events:none}
+.lane{position:absolute;left:0;right:0;background:var(--lane)}.lane.alt{background:transparent}
+.ll{position:absolute;left:12px;font-size:13px;font-weight:600;width:84px;line-height:1.25}
+.ll small{display:block;font-weight:400;color:var(--mut)}
+.sh{position:absolute;top:8px;font-size:13px;color:var(--mut);font-weight:500}
+.c{position:absolute;width:184px;height:64px;padding:5px 9px 5px 11px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:7px;font-size:13px;line-height:1.25;cursor:pointer;overflow:hidden;transition:opacity .15s}
+.c.t{background:var(--bg);border-style:dashed;border-left-style:solid}
+.c .h{display:flex;justify-content:space-between;gap:6px;color:var(--mut);font-size:12px}
+.c .h i{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c .h i.none{color:var(--acc2)}
+.c .ti{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.sb{display:inline-block;font-size:11.5px;font-weight:500;white-space:nowrap;color:var(--mut)}
+.k-done{border-left-color:var(--ok)}.k-done .ti{color:var(--mut)}.sb.k-done{color:var(--ok)}
+.k-pr,.k-draft{border-left-color:var(--pr)}.sb.k-pr,.sb.k-draft{color:var(--pr)}
+.k-warn{border-left-color:var(--warn)}.sb.k-warn{color:var(--warn)}
+.k-ready{border-left-color:var(--ink)}.sb.k-ready{color:var(--ink)}
+#map.focus .c{opacity:.22}#map.focus .c.up,#map.focus .c.dn,#map.focus .c.sel{opacity:1}
+.c.sel{background:var(--acc);color:#fff;border-color:var(--acc)}.c.sel .h,.c.sel .ti,.c.sel .sb{color:#fff}
+.c.up{border:2px solid var(--ink);border-left-width:4px}.c.dn{border:2px solid var(--acc);border-left-width:4px}
+.e{fill:none;stroke:var(--line);stroke-width:1.2}.e.met{stroke-dasharray:3 4}
+#map.focus .e{opacity:.15}#map.focus .e.up{opacity:1;stroke:var(--ink);stroke-width:2}#map.focus .e.dn{opacity:1;stroke:var(--acc);stroke-width:2}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--mut);margin:10px 0 0}
+.legend i{display:inline-block;width:22px;height:12px;vertical-align:-1px;margin-right:6px;border-radius:3px;border:1px solid var(--line);background:var(--card)}
+.panel{margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:16px 18px;background:var(--card);min-height:120px}
+.panel h3{margin:0 0 4px;font-size:20px;line-height:1.25}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:10px}
+.cols h4{margin:0 0 6px;font-size:14px}
+ul.il{list-style:none;margin:0;padding:0}ul.il li{padding:5px 0;border-top:1px solid var(--line);font-size:14px}
+.warn{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 28px}
+.warn div{padding:10px 0;border-top:1px solid var(--line);font-size:15px}
+.how{margin:0;padding-left:22px;max-width:80ch}.how li{margin:6px 0}
+.people{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 28px}
+.person h3{font-size:17px;margin:0 0 6px;padding-bottom:6px;border-bottom:2px solid var(--ink)}
+.person ol{margin:0;padding-left:28px;font-size:14px}.person li{margin:5px 0}
+.person .w{display:block;color:var(--mut);font-size:13px}
+a{color:inherit}
+@media(max-width:900px){.people{grid-template-columns:repeat(2,minmax(0,1fr))}.prog{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.figs{grid-template-columns:repeat(2,minmax(0,1fr))}.cols,.warn,.people{grid-template-columns:minmax(0,1fr)}.prog{grid-template-columns:repeat(2,minmax(0,1fr))}h1{padding-right:0;margin-top:40px}}
+@media(prefers-reduced-motion:reduce){.c{transition:none}}
+</style>
+</head>
+<body>
+<div class="tools"><button id="bLang" type="button"></button><button id="bTheme" type="button"></button></div>
+
+<section class="band"><div class="wrap">
+<h1 id="title">Ondos issue plan</h1>
+<p id="lead" class="mut">Loading the issue data…</p>
+<div class="figs" id="figs"></div>
+<div class="prog" id="prog"></div>
+<h2 style="margin-top:28px" data-i="hHow"></h2>
+<ol class="how" id="how"></ol>
+</div></section>
+
+<section class="band" style="padding-top:0"><div class="wrap">
+<div class="bar" id="bar" role="group" aria-label="View"></div>
+<div class="mapbox" id="mapbox"><div id="map"></div></div>
+<div class="legend">
+<span><i style="border-left:4px solid var(--ok)"></i><span data-i="lgDone"></span></span><span><i style="border-left:4px solid var(--pr)"></i><span data-i="lgPr"></span></span>
+<span><i style="border-left:4px solid var(--warn)"></i><span data-i="lgWarn"></span></span><span><i style="border-left:4px solid var(--ink)"></i><span data-i="lgReady"></span></span>
+<span><i></i><span data-i="lgWait"></span></span><span><i style="border-style:dashed;background:var(--bg)"></i><span data-i="lgTest"></span></span>
+<span><i style="border:2px solid var(--ink)"></i><span data-i="lgUp"></span></span><span><i style="border:2px solid var(--acc)"></i><span data-i="lgDn"></span></span>
+</div>
+<div class="panel" id="panel" aria-live="polite"></div>
+</div></section>
+
+<section class="band" style="background:var(--card)"><div class="wrap">
+<h2 data-i="hBott"></h2>
+<p class="mut" data-i="pBott"></p>
+<div class="warn" id="chains"></div>
+</div></section>
+
+<section class="band"><div class="wrap">
+<h2 data-i="hHo"></h2>
+<p class="mut" data-i="pHo"></p>
+<div class="warn" id="handoffs"></div>
+</div></section>
+
+<section class="band" style="background:var(--card)"><div class="wrap">
+<h2 data-i="hPeople"></h2>
+<p class="mut" data-i="pPeople"></p>
+<div class="people" id="people"></div>
+</div></section>
+
+<section class="band" style="padding-top:0"><div class="wrap">
+<p class="mut small" id="foot"></p>
+</div></section>
+
+<script>
+{
+const MOD={A:'Tilting Platform',B:'Glove',C:'Vision',D:'Auto Controller',E:'Control Station'};
+const I18N={
+en:{locale:'en-GB',docTitle:'Ondos Issue Plan',loading:'Loading the issue data…',loadErr:m=>`Could not load data.json (${m}). The page is built by the team-stats workflow.`,
+ langBtn:'TR',langAria:'Türkçeye geç',themeBtn:d=>d?'☀ Light':'☾ Dark',themeAria:d=>d?'Switch to light theme':'Switch to dark theme',
+ title:(d,t,r)=>`Ondos issue plan: ${d} of ${t} tasks done, ${r} can start now`,
+ lead:(repo,e)=>`The module issues of ${repo} and the ${e} "blocked by" links between them, with the state of each issue and its pull requests. Click a card: <b>black outlines must finish first</b>, <b>orange outlines are waiting for it</b>.`,
+ fDone:p=>`tasks done (${p}%)`,fPr:'pull requests open',fReady:'ready to start, no PR yet',fWait:'waiting for a blocker',
+ hHow:'How to proceed',
+ howReview:l=>`<b>Review the open pull requests first</b>, the ones that unblock the most work at the top: ${l}.`,unblocks:u=>`unblocks ${u}`,
+ howClose:l=>`<b>Close these issues</b>; their pull request is merged but the issue is still open: ${l}.`,
+ howStart:n=>`<b>Start the ${n} ready tasks.</b> None of them waits for an open task and none has a pull request yet. Use the "Ready" filter on the map.`,
+ howBott:l=>`<b>Put the bottlenecks first.</b> ${l}.`,howOwner:l=>`<b>Take an owner</b> for ${l}.`,
+ howTests:'<b>Tests come last.</b> Dashed cards are tests; they run once their code is done.',
+ lgDone:'done (merged or closed)',lgPr:'pull request open or draft',lgWarn:'PR merged, issue still open',lgReady:'ready, no PR yet',lgWait:'waiting for a blocker',lgTest:'test',lgUp:'must finish first',lgDn:'waiting for it',
+ hint:'Pick an issue on the map to list what must finish first and what is waiting for it.',
+ all:'All',fiReady:'Ready',fiPr:'PR open',fiWarn:'PR merged, issue open',fiWait:'Waiting',fiDone:'Done',
+ stage:l=>`Stage ${l}`,mapAria:'Dependency map: stages left to right, modules top to bottom',
+ module:'Module',test:'test',code:'code',prsLabel:'Pull requests',noPr:'no pull request',openGh:'Open on GitHub',
+ prState:{open:'open',draft:'draft',merged:'merged',closed:'closed'},
+ mustFirst:n=>`Must finish first (${n})`,waitingIt:n=>`Waiting for it (${n})`,none:'None.',
+ filterHead:(t,n)=>`${t}: ${n} tasks`,personHead:(p,n)=>`${p}: ${n} tasks`,
+ personNote:p=>`Orange: ${p}'s tasks. Black outline: must finish first. Orange outline: waiting for them.`,byStage:'Tasks by stage',waitingThem:n=>`Waiting for them (${n})`,
+ hBott:'Bottlenecks: the open issues that hold up the most work',pBott:'The number counts every open task that cannot start until this issue is done, including indirect ones.',
+ bottInfo:n=>`${n} open tasks wait for it`,noBott:'No open issue blocks another one.',
+ hHo:'Handoffs between people',pHo:'Open tasks that must finish before someone else can start. When one of these is done, tell the person waiting.',waiting:'Waiting',
+ hPeople:'Work order per person',pPeople:'Each person\'s open tasks in the order they can start. "Waiting for" lists open tasks owned by someone else.',
+ personDone:(d,a)=>`${d}/${a} done`,waitingFor:'Waiting for',doneList:'Done',unassigned:'unassigned',
+ badge:{merged:p=>`✓ Merged ${p}`,closed:()=>'✓ Closed',warn:p=>`PR ${p} merged, issue open`,pr:p=>`PR open ${p}`,draft:p=>`Draft PR ${p}`,ready:()=>'Ready · no PR',wait:()=>'Waiting'},
+ foot:t=>`Data: GitHub, ${t} (Istanbul). Rebuilt by the team-stats workflow every hour and when an issue or pull request changes. Decisions D1–D14 are not shown. Page design: Yağmur Gül. <a href="../">Team activity</a>`},
+tr:{locale:'tr-TR',docTitle:'Ondos Issue Planı',loading:'Issue verisi yükleniyor…',loadErr:m=>`data.json yüklenemedi (${m}). Sayfayı team-stats workflow'u oluşturur.`,
+ langBtn:'EN',langAria:'Switch to English',themeBtn:d=>d?'☀ Açık':'☾ Koyu',themeAria:d=>d?'Açık temaya geç':'Koyu temaya geç',
+ title:(d,t,r)=>`Ondos issue planı: ${t} görevden ${d} tanesi bitti, ${r} tanesine şimdi başlanabilir`,
+ lead:(repo,e)=>`${repo} reposundaki modül issue'ları, aralarındaki ${e} "blocked by" bağlantısı, her issue'nun ve PR'larının durumu. Bir karta tıkla: <b>siyah çerçeveliler önce bitmeli</b>, <b>turuncu çerçeveliler onu bekliyor</b>.`,
+ fDone:p=>`görev bitti (%${p})`,fPr:'açık PR',fReady:'başlamaya hazır, PR yok',fWait:'bir blocker bekliyor',
+ hHow:'Nasıl ilerlemeli',
+ howReview:l=>`<b>Önce açık PR'ları incele</b>; en çok işi açanlar başta: ${l}.`,unblocks:u=>`${u} işi açar`,
+ howClose:l=>`<b>Bu issue'ları kapat</b>; PR'ları merge edildi ama issue hâlâ açık: ${l}.`,
+ howStart:n=>`<b>Hazır ${n} göreve başla.</b> Hiçbiri açık bir görevi beklemiyor ve hiçbirinin PR'ı yok. Haritada "Hazır" filtresini kullan.`,
+ howBott:l=>`<b>Darboğazları öne al.</b> ${l}.`,howOwner:l=>`<b>Sahip bulun:</b> ${l}.`,
+ howTests:'<b>Testler en sona.</b> Kesik çizgili kartlar test; kodları bitince çalıştırılır.',
+ lgDone:'bitti (merge edildi veya kapandı)',lgPr:'PR açık veya taslak',lgWarn:'PR merge edildi, issue açık',lgReady:'hazır, PR yok',lgWait:'bir blocker bekliyor',lgTest:'test',lgUp:'önce bitmeli',lgDn:'onu bekliyor',
+ hint:'Neyin önce bitmesi gerektiğini ve neyin onu beklediğini görmek için haritada bir issue seç.',
+ all:'Tümü',fiReady:'Hazır',fiPr:'PR açık',fiWarn:'PR merge, issue açık',fiWait:'Bekliyor',fiDone:'Bitti',
+ stage:l=>`Aşama ${l}`,mapAria:'Bağımlılık haritası: aşamalar soldan sağa, modüller yukarıdan aşağıya',
+ module:'Modül',test:'test',code:'kod',prsLabel:'PR\'lar',noPr:'PR yok',openGh:'GitHub\'da aç',
+ prState:{open:'açık',draft:'taslak',merged:'merge edildi',closed:'kapalı'},
+ mustFirst:n=>`Önce bitmeli (${n})`,waitingIt:n=>`Onu bekleyenler (${n})`,none:'Yok.',
+ filterHead:(t,n)=>`${t}: ${n} görev`,personHead:(p,n)=>`${p}: ${n} görev`,
+ personNote:p=>`Turuncu: ${p} adlı kişinin görevleri. Siyah çerçeve: önce bitmeli. Turuncu çerçeve: onları bekliyor.`,byStage:'Aşamaya göre görevler',waitingThem:n=>`Onları bekleyenler (${n})`,
+ hBott:'Darboğazlar: en çok işi bekleten açık issue\'lar',pBott:'Sayı, bu issue bitmeden başlayamayan bütün açık görevleri (dolaylı olanlar dahil) sayar.',
+ bottInfo:n=>`${n} açık görev bunu bekliyor`,noBott:'Hiçbir açık issue başka birini bekletmiyor.',
+ hHo:'Kişiler arası devir noktaları',pHo:'Başka birinin başlayabilmesi için bitmesi gereken açık görevler. Biri bitince bekleyen kişiye haber ver.',waiting:'Bekleyen',
+ hPeople:'Kişi başına iş sırası',pPeople:'Herkesin açık görevleri, başlayabilecekleri sırayla. "Bekliyor" başkasına ait açık görevleri listeler.',
+ personDone:(d,a)=>`${d}/${a} bitti`,waitingFor:'Bekliyor',doneList:'Bitenler',unassigned:'sahipsiz',
+ badge:{merged:p=>`✓ Merge edildi ${p}`,closed:()=>'✓ Kapandı',warn:p=>`PR ${p} merge edildi, issue açık`,pr:p=>`PR açık ${p}`,draft:p=>`Taslak PR ${p}`,ready:()=>'Hazır · PR yok',wait:()=>'Bekliyor'},
+ foot:t=>`Veri: GitHub, ${t} (İstanbul). team-stats workflow'u her saat ve bir issue veya PR değişince yeniden oluşturur. D1–D14 kararları gösterilmez. Sayfa tasarımı: Yağmur Gül. <a href="../">Ekip etkinliği</a>`}};
+
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+const saved=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+let lang=saved('lang')||((navigator.language||'').toLowerCase().startsWith('tr')?'tr':'en');if(!I18N[lang])lang='en';
+let DATA=null,cur={pick:()=>{},pos:new Map()};
+
+/* theme and language buttons */
+const isDark=()=>document.documentElement.dataset.theme?document.documentElement.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+function paintTools(){const T=I18N[lang],d=isDark();$('bLang').textContent=T.langBtn;$('bLang').setAttribute('aria-label',T.langAria);
+ $('bTheme').textContent=T.themeBtn(d);$('bTheme').setAttribute('aria-label',T.themeAria(d))}
+$('bTheme').onclick=()=>{const t=isDark()?'light':'dark';document.documentElement.dataset.theme=t;store('theme',t);paintTools()};
+$('bLang').onclick=()=>{lang=lang==='en'?'tr':'en';store('lang',lang);applyStatic();if(DATA)render(DATA)};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',paintTools);
+function applyStatic(){const T=I18N[lang];document.documentElement.lang=lang;document.title=T.docTitle;
+ document.querySelectorAll('[data-i]').forEach(e=>{e.innerHTML=T[e.dataset.i]});$('map').setAttribute('aria-label',T.mapAria);paintTools()}
+applyStatic();$('lead').textContent=I18N[lang].loading;
+
+/* map and list clicks, bound once; render() swaps cur */
+const map=$('map');
+map.addEventListener('click',e=>{const c=e.target.closest('.c');if(c)cur.pick(+c.dataset.n)});
+map.addEventListener('keydown',e=>{const c=e.target.closest('.c');if(c&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cur.pick(+c.dataset.n)}});
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(!g)return;const n=+g.dataset.go;cur.pick(n);const p=cur.pos.get(n),box=$('mapbox');
+ box.scrollTo({left:Math.max(0,p.x-120),top:Math.max(0,p.y-80),behavior:'smooth'});box.scrollIntoView({block:'nearest'})});
+
+fetch('data.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{DATA=d;render(d)}).catch(e=>{$('lead').textContent=I18N[lang].loadErr(e.message)});
+
+function render(D){
+const T=I18N[lang],GH='https://github.com/'+D.repo;
+const by=new Map(D.issues.map(i=>[i.n,i]));
+const pre=new Map(),suc=new Map();
+for(const i of D.issues){pre.set(i.n,[]);suc.set(i.n,[])}
+for(const [a,b] of D.edges){suc.get(a).push(b);pre.get(b).push(a)}
+/* done for planning: closed, or its pull request is merged */
+const done=i=>['merged','closed','pr_merged_issue_open'].includes(i.s);
+const isOpen=n=>!done(by.get(n));
+const ready=i=>!done(i)&&pre.get(i.n).every(n=>!isOpen(n));
+const kind=i=>({merged:'done',closed:'done',pr_merged_issue_open:'warn',pr_open:'pr',pr_draft:'draft'}[i.s]||(ready(i)?'ready':'wait'));
+const prNums=(i,f)=>i.prs.filter(f).map(p=>'#'+p.n).join(' ');
+const badge=i=>{const k=kind(i),B=T.badge;
+ if(k==='done')return i.s==='merged'?B.merged(prNums(i,p=>p.s==='merged')):B.closed();
+ if(k==='warn')return B.warn(prNums(i,p=>p.s==='merged'));
+ if(k==='pr')return B.pr(prNums(i,p=>p.s==='open'&&!p.d));
+ if(k==='draft')return B.draft(prNums(i,p=>p.s==='open'));
+ return B[k]()};
+const prLinks=i=>i.prs.length?i.prs.map(p=>`<a href="${GH}/pull/${p.n}">#${p.n}</a> (${T.prState[p.d&&p.s==='open'?'draft':p.s]})`).join(', '):T.noPr;
+
+const lvl=new Map();
+const L=n=>{if(lvl.has(n))return lvl.get(n);const p=pre.get(n);const v=p.length?1+Math.max(...p.map(L)):0;lvl.set(n,v);return v};
+D.issues.forEach(i=>L(i.n));
+const walk=(n,m,s=new Set(),keep=()=>true)=>{for(const x of m.get(n))if(!s.has(x)&&keep(x)){s.add(x);walk(x,m,s,keep)}return s};
+const openDesc=new Map(D.issues.map(i=>[i.n,walk(i.n,suc,new Set(),isOpen).size]));
+const maxL=Math.max(...lvl.values());
+const who=i=>i.a.length?i.a.join(', '):T.unassigned;
+const lab=n=>`#${n} ${esc(by.get(n).t)}`;
+const go=n=>`<button class="go" data-go="${n}">${lab(n)}</button>`;
+const sb=i=>`<span class="sb k-${kind(i)}">${esc(badge(i))}</span>`;
+
+/* figures */
+const open=D.issues.filter(i=>!done(i)),nDone=D.issues.length-open.length;
+const rdy=open.filter(i=>i.s==='no_pr'&&ready(i)),inPr=open.filter(i=>i.s==='pr_open'||i.s==='pr_draft'),warn=D.issues.filter(i=>i.s==='pr_merged_issue_open');
+const reviewPrs=[...new Map(inPr.flatMap(i=>i.prs.filter(p=>p.s==='open').map(p=>[p.n,p]))).values()];
+$('title').textContent=T.title(nDone,D.issues.length,rdy.length);
+$('lead').innerHTML=T.lead(`<a href="${GH}/issues">${esc(D.repo)}</a>`,D.edges.length);
+$('figs').innerHTML=[[`${nDone} / ${D.issues.length}`,T.fDone(Math.round(100*nDone/D.issues.length))],[reviewPrs.length,T.fPr],[rdy.length,T.fReady],[open.length-rdy.length-inPr.length,T.fWait]]
+ .map(([b,s])=>`<div><b>${b}</b><span>${s}</span></div>`).join('');
+$('prog').innerHTML=Object.entries(MOD).map(([m,name])=>{const a=D.issues.filter(i=>i.m===m),d=a.filter(done).length;
+ return `<div><b>${m}</b> ${name} <span class="mut">${d}/${a.length}</span><span class="t"><i style="width:${a.length?100*d/a.length:0}%"></i></span></div>`}).join('');
+
+/* how to proceed */
+const unblocks=p=>new Set(D.issues.filter(i=>i.prs.some(q=>q.n===p.n)).flatMap(i=>[...walk(i.n,suc,new Set(),isOpen)])).size;
+const rv=reviewPrs.map(p=>[p,unblocks(p)]).sort((a,b)=>b[1]-a[1]||a[0].n-b[0].n);
+const bott=open.filter(i=>openDesc.get(i.n)>0).sort((a,b)=>openDesc.get(b.n)-openDesc.get(a.n)||a.n-b.n);
+const how=[];
+if(rv.length)how.push(T.howReview(rv.map(([p,u])=>`<a href="${GH}/pull/${p.n}">#${p.n}</a>${p.d?` (${T.prState.draft})`:''} ${u?T.unblocks(u):''}`).join(' · ')));
+if(warn.length)how.push(T.howClose(warn.map(i=>go(i.n)).join(', ')));
+how.push(T.howStart(rdy.length));
+if(bott.length)how.push(T.howBott(bott.slice(0,5).map(i=>`#${i.n} ${esc(i.t)} (${openDesc.get(i.n)})`).join(', ')));
+const un=open.filter(i=>!i.a.length);if(un.length)how.push(T.howOwner(un.map(i=>go(i.n)).join(', ')));
+how.push(T.howTests);
+$('how').innerHTML=how.map(h=>`<li>${h}</li>`).join('');
+
+/* map layout */
+const CW=184,CH=64,GX=240,GY=8,LX=104,TOP=36,PAD=12;
+const cells={};
+for(const i of D.issues){const k=i.m+lvl.get(i.n);(cells[k]=cells[k]||[]).push(i)}
+Object.values(cells).forEach(a=>a.sort((x,y)=>x.x-y.x||x.n-y.n));
+const pos=new Map();let y=TOP;const lanes=[];
+for(const m of Object.keys(MOD)){
+ let rows=1;for(let l=0;l<=maxL;l++)rows=Math.max(rows,(cells[m+l]||[]).length);
+ const h=rows*(CH+GY)-GY+PAD*2;lanes.push({m,y,h});
+ for(let l=0;l<=maxL;l++)(cells[m+l]||[]).forEach((i,k)=>pos.set(i.n,{x:LX+l*GX,y:y+PAD+k*(CH+GY)}));
+ y+=h;
+}
+const W=LX+maxL*GX+CW+24,H=y+8;
+map.style.width=W+'px';map.style.height=H+'px';
+let html=lanes.map((l,k)=>`<div class="lane${k%2?' alt':''}" style="top:${l.y}px;height:${l.h}px"></div><div class="ll" style="top:${l.y+PAD}px">${l.m}<small>${MOD[l.m]}</small></div>`).join('');
+for(let l=0;l<=maxL;l++)html+=`<div class="sh" style="left:${LX+l*GX}px">${T.stage(l)}</div>`;
+let svg=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">`;
+for(const [a,b] of D.edges){const p=pos.get(a),q=pos.get(b);
+ const x1=p.x+CW,y1=p.y+CH/2,x2=q.x,y2=q.y+CH/2,dx=Math.max(30,(x2-x1)/2);
+ svg+=`<path class="e${isOpen(a)?'':' met'}" data-a="${a}" data-b="${b}" d="M${x1} ${y1}C${x1+dx} ${y1} ${x2-dx} ${y2} ${x2} ${y2}"/>`}
+html+=svg+'</svg>'+D.issues.map(i=>{const p=pos.get(i.n);return `<div class="c k-${kind(i)}${i.x?' t':''}" tabindex="0" role="button" data-n="${i.n}" style="left:${p.x}px;top:${p.y}px" title="#${i.n} ${esc(i.t)}: ${esc(who(i))} · ${esc(badge(i))}"><span class="h"><span>#${i.n}</span><i class="${i.a.length?'':'none'}">${esc(who(i))}</i></span><span class="ti">${esc(i.t)}</span>${sb(i)}</div>`}).join('');
+map.innerHTML=html;
+
+/* selection */
+const panel=$('panel'),hint=`<p class="mut" style="margin:0">${T.hint}</p>`;
+const list=s=>{const a=[...s];return a.length?`<ul class="il">${a.sort((x,y)=>lvl.get(x)-lvl.get(y)||x-y).map(n=>`<li>${go(n)} <span class="mut">· ${esc(who(by.get(n)))} ·</span> ${sb(by.get(n))}</li>`).join('')}</ul>`:`<p class="mut small">${T.none}</p>`};
+function mark(sel,up,dn){
+ map.classList.toggle('focus',!!(sel.size||up.size||dn.size));
+ map.querySelectorAll('.c').forEach(c=>{const n=+c.dataset.n;c.classList.toggle('sel',sel.has(n));c.classList.toggle('up',up.has(n)&&!sel.has(n));c.classList.toggle('dn',dn.has(n)&&!sel.has(n))});
+ map.querySelectorAll('.e').forEach(e=>{const a=+e.dataset.a,b=+e.dataset.b,S=x=>sel.has(x);
+  e.classList.toggle('up',(up.has(a)||S(a))&&(up.has(b)||S(b)));e.classList.toggle('dn',(S(a)||dn.has(a))&&dn.has(b))});
+}
+function pick(n){
+ setMode(null);const up=walk(n,pre),dn=walk(n,suc),i=by.get(n);mark(new Set([n]),up,dn);
+ panel.innerHTML=`<h3>#${n} ${esc(i.t)}</h3><p class="mut" style="margin:0">${T.module} ${i.m} · ${MOD[i.m]} · ${i.x?T.test:T.code} · ${T.stage(lvl.get(n))} · ${esc(who(i))} · ${sb(i)} · ${T.prsLabel}: ${prLinks(i)} · <a href="${GH}/issues/${n}">${T.openGh}</a></p>
+ <div class="cols"><div><h4>${T.mustFirst(up.size)}</h4>${list(up)}</div><div><h4>${T.waitingIt(dn.size)}</h4>${list(dn)}</div></div>`;
+}
+cur={pick,pos};
+mark(new Set(),new Set(),new Set());panel.innerHTML=hint;
+
+/* filters: status, then people */
+const bar=$('bar');bar.innerHTML=`<button data-all aria-pressed="true">${T.all}</button>`;
+const btn={all:bar.querySelector('[data-all]')};
+const FILTERS=[['ready',T.fiReady,i=>kind(i)==='ready'],['pr',T.fiPr,i=>['pr','draft'].includes(kind(i))],['warn',T.fiWarn,i=>kind(i)==='warn'],['wait',T.fiWait,i=>kind(i)==='wait'],['done',T.fiDone,done]]
+ .filter(([k,,f])=>k!=='warn'||D.issues.some(f));
+bar.insertAdjacentHTML('beforeend',FILTERS.map(([k,t])=>`<button data-f="${k}" aria-pressed="false">${t}</button>`).join('')+'<span class="sep"></span>');
+for(const [k,t,f] of FILTERS){const b=bar.querySelector(`[data-f="${k}"]`);btn['f:'+k]=b;b.onclick=()=>{const a=D.issues.filter(f).map(i=>i.n);mark(new Set(a),new Set(),new Set());setMode('f:'+k);
+ panel.innerHTML=`<h3>${T.filterHead(t,a.length)}</h3>${list(a)}`}}
+const people=[...new Set(D.issues.flatMap(i=>i.a))].sort((a,b)=>a.localeCompare(b,'tr'));
+bar.insertAdjacentHTML('beforeend',people.map(p=>`<button data-p="${esc(p)}" aria-pressed="false">${esc(p)}</button>`).join(''));
+bar.querySelectorAll('[data-p]').forEach(b=>{const p=b.dataset.p;btn[p]=b;b.onclick=()=>{const mine=D.issues.filter(i=>i.a.includes(p)).map(i=>i.n);const up=new Set(),dn=new Set();
+ mine.forEach(n=>{walk(n,pre,up);walk(n,suc,dn)});mine.forEach(n=>{up.delete(n);dn.delete(n)});mark(new Set(mine),up,dn);setMode(p);
+ panel.innerHTML=`<h3>${esc(T.personHead(p,mine.length))}</h3><p class="mut" style="margin:0">${esc(T.personNote(p))}</p><div class="cols"><div><h4>${T.byStage}</h4>${list(mine)}</div><div><h4>${T.waitingThem(dn.size)}</h4>${list(dn)}</div></div>`}});
+function setMode(m){for(const k in btn)btn[k].setAttribute('aria-pressed',String(k===(m||'none')))}
+btn.all.onclick=()=>{mark(new Set(),new Set(),new Set());setMode('all');panel.innerHTML=hint};
+
+/* bottlenecks */
+$('chains').innerHTML=bott.slice(0,8).map(i=>`<div>${go(i.n)} ${sb(i)}<br><span class="mut small">${T.module} ${i.m} · ${esc(who(i))} · ${T.bottInfo(openDesc.get(i.n))}</span></div>`).join('')||`<p class="mut">${T.noBott}</p>`;
+
+/* handoffs between people, open tasks only */
+const ho=[];for(const i of open){const others=new Map();for(const s of suc.get(i.n)){const j=by.get(s);if(done(j))continue;for(const p of j.a)if(!i.a.includes(p)){if(!others.has(p))others.set(p,[]);others.get(p).push(s)}}if(others.size)ho.push({i,others})}
+ho.sort((a,b)=>b.others.size-a.others.size||openDesc.get(b.i.n)-openDesc.get(a.i.n));
+$('handoffs').innerHTML=ho.slice(0,12).map(({i,others})=>`<div>${go(i.n)} <span class="mut small">· ${esc(who(i))}</span> ${sb(i)}<br><span class="small">${T.waiting}: ${[...others].map(([p,ns])=>`${esc(p)} (${ns.map(n=>'#'+n).join(', ')})`).join(' · ')}</span></div>`).join('');
+
+/* per person queues */
+$('people').innerHTML=people.map(p=>{const all=D.issues.filter(i=>i.a.includes(p)),mine=all.filter(i=>!done(i)).sort((a,b)=>lvl.get(a.n)-lvl.get(b.n)||a.x-b.x||a.n-b.n),fin=all.filter(done);
+ return `<div class="person"><h3>${esc(p)} · ${T.personDone(fin.length,all.length)}</h3><ol>${mine.map(i=>{const ext=pre.get(i.n).filter(n=>isOpen(n)&&!by.get(n).a.some(x=>i.a.includes(x)));
+  return `<li>${go(i.n)} ${sb(i)}${ext.length?`<span class="w">${T.waitingFor}: ${ext.map(n=>`#${n} ${esc(who(by.get(n)))}`).join(', ')}</span>`:''}</li>`}).join('')}</ol>${fin.length?`<p class="mut small" style="margin:6px 0 0">${T.doneList}: ${fin.map(i=>`<button class="go" data-go="${i.n}">#${i.n}</button>`).join(' ')}</p>`:''}</div>`}).join('');
+
+const t=new Date(D.generated_at).toLocaleString(T.locale,{timeZone:'Europe/Istanbul',dateStyle:'medium',timeStyle:'short'});
+$('foot').innerHTML=T.foot(t);
+}
+}
+</script>
+</body>
+</html>

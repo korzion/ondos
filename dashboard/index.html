@@ -141,7 +141,7 @@ function render(S){
   Chart.defaults.color=css('--muted');Chart.defaults.borderColor=css('--line');
   const repo=S.repo, gh='https://github.com/'+repo;
   document.getElementById('meta').innerHTML=`Repository <a href="${gh}">${esc(repo)}</a> · updated ${new Date(S.generated_at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})}`;
-  document.getElementById('links').innerHTML=[
+  document.getElementById('links').innerHTML='<a href="plan/">Issue plan</a>'+[
     ['Contributors','/graphs/contributors'],['Pulse','/pulse'],['Commits','/commits'],['Pull requests','/pulls?q=is%3Apr'],['Issues','/issues']
   ].map(([t,p])=>`<a href="${gh}${p}">${t} ↗</a>`).join('');
 
