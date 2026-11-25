@@ -35,7 +35,7 @@ Then, in `control-station/`:
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | starts the app with live reload |
-| `npm run typecheck` | checks the types without building |
+| `npm run typecheck` | checks the types of the app and GameManager without building |
 | `npm run build` | builds the app into `out/` |
 | `npm run dist:win` | Windows installer in `dist/` |
 | `npm run dist:linux` | Linux AppImage in `dist/` |
@@ -47,6 +47,15 @@ mosquitto -c ../shared/bus/mosquitto.conf
 ```
 
 On Ubuntu 24.04 the AppImage needs `sudo apt install libfuse2t64`, or run it with `--appimage-extract-and-run`.
+
+## GameManager
+
+A Node.js background process in `game-manager/`, separate from the Electron app. Run `npm ci` once at the repository root (GameManager takes `mqtt`, `ajv` and `tsx` from there), then from this folder:
+
+```
+npm run game-manager                 # broker at mqtt://127.0.0.1:1883
+npm run game-manager <broker-url>    # another broker
+```
 
 ## Tests and Dec 4 demo
 
