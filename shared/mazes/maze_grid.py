@@ -2,14 +2,24 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
 
 from shared.interfaces import validate_file
 
+log = logging.getLogger(__name__)
+
 JSON_INDENT_SPACES = 2
 CELL_CENTRE_OFFSET_CELLS = 0.5  # a cell centre is half a cell from the cell's origin corner (IF-04)
+
+# wall bit flags of a cell (IF-04)
+WALL_N = 1  # +y side
+WALL_E = 2  # +x side
+WALL_S = 4  # -y side
+WALL_W = 8  # -x side
+ALL_WALLS = WALL_N | WALL_E | WALL_S | WALL_W
 
 Cell = tuple[int, int]  # (row, col)
 
@@ -61,6 +71,21 @@ class MazeGrid:
         # newline="\n" keeps LF on Windows too, so the file is byte-identical on every machine
         Path(path).write_text(text, encoding="utf-8", newline="\n")
 
+    def validate(self) -> bool:
+        """True when the maze is consistent: closed outer borders, agreeing neighbour flags, start and exit in place."""
+        checks = (
+            (self._has_grid_shape, "walls is not a rows x cols grid of wall flags"),
+            (self._has_closed_borders, "an outer border is open"),
+            (self._has_agreeing_neighbours, "two neighbour cells disagree about the wall between them"),
+            (self._has_start_and_exit_in_place, "start_cell or exit_cell is outside the grid, or they are equal"),
+            (self._has_exit_marker_in_exit_cell, "the centre of the exit marker is not inside exit_cell"),
+        )
+        for is_ok, problem in checks:
+            if not is_ok():
+                log.warning("maze %s is not valid: %s", self.maze_id, problem)
+                return False  # the later checks index walls and need the earlier ones to hold
+        return True
+
     def cell_centre_mm(self, row: int, col: int) -> tuple[float, float]:
         """Centre of a cell in the board frame: columns run along +x, rows along +y."""
         x_mm = self.origin_x_mm + (col + CELL_CENTRE_OFFSET_CELLS) * self.cell_size_mm
@@ -69,12 +94,58 @@ class MazeGrid:
 
     def cell_of(self, x_mm: float, y_mm: float) -> Cell | None:
         """Cell that contains a board-frame point, or None outside the grid."""
+        # ASSUMPTION: C.5 gives the result as (row, col) and does not say what a point outside the grid gives.
+        # None is returned there, so that a caller cannot plan from a wrong cell.
         # floor, not int(): a point just outside the -x or -y border must not round into row or column 0
         row = math.floor((y_mm - self.origin_y_mm) / self.cell_size_mm)
         col = math.floor((x_mm - self.origin_x_mm) / self.cell_size_mm)
-        if not (0 <= row < self.rows and 0 <= col < self.cols):
+        if not self._is_in_grid((row, col)):
             return None
         return (row, col)
+
+    def _is_in_grid(self, cell: Cell) -> bool:
+        row, col = cell
+        return 0 <= row < self.rows and 0 <= col < self.cols
+
+    def _has_grid_shape(self) -> bool:
+        if len(self.walls) != self.rows:
+            return False
+        for row_flags in self.walls:
+            if len(row_flags) != self.cols:
+                return False
+            if any(not 0 <= flags <= ALL_WALLS for flags in row_flags):
+                return False
+        return True
+
+    def _has_closed_borders(self) -> bool:
+        last_row, last_col = self.rows - 1, self.cols - 1
+        for col in range(self.cols):
+            if not self.walls[0][col] & WALL_S or not self.walls[last_row][col] & WALL_N:
+                return False
+        for row in range(self.rows):
+            if not self.walls[row][0] & WALL_W or not self.walls[row][last_col] & WALL_E:
+                return False
+        return True
+
+    def _has_agreeing_neighbours(self) -> bool:
+        for row in range(self.rows):
+            for col in range(self.cols):
+                flags = self.walls[row][col]
+                if col + 1 < self.cols and bool(flags & WALL_E) != bool(self.walls[row][col + 1] & WALL_W):
+                    return False
+                if row + 1 < self.rows and bool(flags & WALL_N) != bool(self.walls[row + 1][col] & WALL_S):
+                    return False
+        return True
+
+    def _has_start_and_exit_in_place(self) -> bool:
+        if not self._is_in_grid(self.exit_cell):
+            return False
+        if self.start_cell is None:  # the start cell may be unknown until the game starts (IF-04)
+            return True
+        return self._is_in_grid(self.start_cell) and self.start_cell != self.exit_cell
+
+    def _has_exit_marker_in_exit_cell(self) -> bool:
+        return self.cell_of(self.exit_x_mm, self.exit_y_mm) == self.exit_cell
 
     def _to_json(self) -> dict:
         return {

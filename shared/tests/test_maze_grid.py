@@ -147,3 +147,36 @@ def test_cell_of_finds_every_cell_from_its_centre():
     for row in range(maze.rows):
         for col in range(maze.cols):
             assert maze.cell_of(*maze.cell_centre_mm(row, col)) == (row, col)
+
+
+def changed_example(**changes):
+    return dataclasses.replace(MazeGrid.load(str(EXAMPLE_PATH)), **changes)
+
+
+def test_example_maze_is_valid():
+    assert MazeGrid.load(str(EXAMPLE_PATH)).validate() is True
+
+
+def test_maze_without_start_cell_is_valid():
+    assert changed_example(start_cell=None).validate() is True
+
+
+@pytest.mark.parametrize("walls,why", [
+    (((10, 14), (9, 3)), "cell (0, 0) lost its S wall: the outer border is open"),
+    (((12, 14), (9, 3)), "cell (0, 0) lost its E wall but cell (0, 1) still has its W wall"),
+    (((14, 14),), "one row of walls in a maze with two rows"),
+    (((14, 14, 14), (9, 3, 3)), "three columns of walls in a maze with two columns"),
+    (((14, 30), (9, 3)), "30 is not a combination of the four wall flags"),
+])
+def test_maze_with_inconsistent_walls_is_not_valid(walls, why):
+    assert changed_example(walls=walls).validate() is False, why
+
+
+@pytest.mark.parametrize("changes,why", [
+    ({"exit_cell": (0, 2)}, "exit_cell is outside the grid"),
+    ({"start_cell": (2, 0)}, "start_cell is outside the grid"),
+    ({"start_cell": (0, 1)}, "start_cell is the same cell as exit_cell"),
+    ({"exit_x_mm": -20.0}, "the exit marker centre is in cell (0, 0), not in exit_cell (0, 1)"),
+])
+def test_maze_with_inconsistent_start_or_exit_is_not_valid(changes, why):
+    assert changed_example(**changes).validate() is False, why
