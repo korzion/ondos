@@ -1,0 +1,9 @@
+# AI part of D · Auto Controller (D.4: package versions are pinned here). Python 3.11.
+# Shared library first, from the repository root:  pip install -e ".[dev]"
+# A CPU build of PyTorch is enough for the small MLP. On Linux the default PyPI wheel
+# includes CUDA (several GB); install the CPU build first with:
+#   pip install torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0
+stable-baselines3==2.9.2
+gymnasium==1.4.0
+numpy==2.4.6
