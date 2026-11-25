@@ -1,13 +1,16 @@
-"""Planning on a maze (IF-04): the distance map, computed by the same code for Vision and for training."""
+"""Planning on a maze (IF-04): the distance map and the route, computed by the same code for Vision and for training."""
 from __future__ import annotations
 
 from collections import deque
 
 from shared.mazes.maze_grid import WALL_E, WALL_N, WALL_S, WALL_W, Cell, MazeGrid
+from shared.mazes.route import ROUTE_INVALID, ROUTE_NO_PATH, ROUTE_VALID, Route
 
 UNREACHABLE_STEPS = -1  # plan/distance_map: no path from this cell to the exit
+MAX_ROUTE_POINTS = 3    # plan/route carries up to 3 points
 
-# (wall flag, row step, col step) to the neighbour on that side, in the order N, E, S, W
+# (wall flag, row step, col step) to the neighbour on that side, in the order N, E, S, W.
+# The route breaks ties in this order, so every maze and ball cell has exactly one route (IF-04).
 NEIGHBOUR_STEPS = ((WALL_N, 1, 0), (WALL_E, 0, 1), (WALL_S, -1, 0), (WALL_W, 0, -1))
 
 
@@ -28,6 +31,37 @@ def build_distance_map(maze: MazeGrid) -> list[list[int]]:
             steps[neighbour_row][neighbour_col] = steps[row][col] + 1
             cells_to_visit.append((neighbour_row, neighbour_col))
     return steps
+
+
+def plan_route(maze: MazeGrid, steps: list[list[int]], x_mm: float, y_mm: float) -> Route:
+    """Route for a ball at a board-frame point; steps is the distance map of the same maze."""
+    ball_cell = maze.cell_of(x_mm, y_mm)
+    if ball_cell is None:
+        return Route(ROUTE_INVALID, None, (), None)
+    distance_cells = steps[ball_cell[0]][ball_cell[1]]
+    if distance_cells == UNREACHABLE_STEPS:
+        return Route(ROUTE_NO_PATH, ball_cell, (), None)
+    return Route(ROUTE_VALID, ball_cell, _target_points_mm(maze, steps, ball_cell), distance_cells)
+
+
+def _target_points_mm(maze: MazeGrid, steps: list[list[int]], ball_cell: Cell) -> tuple[tuple[float, float], ...]:
+    if ball_cell == maze.exit_cell:
+        return ((maze.exit_x_mm, maze.exit_y_mm),)  # in the exit cell the only point is the exit marker
+    points_mm = []
+    cell = ball_cell
+    while cell != maze.exit_cell and len(points_mm) < MAX_ROUTE_POINTS:
+        cell = _next_cell(maze, steps, cell)
+        points_mm.append(maze.cell_centre_mm(*cell))
+    return tuple(points_mm)
+
+
+def _next_cell(maze: MazeGrid, steps: list[list[int]], cell: Cell) -> Cell:
+    next_cell = None
+    for neighbour in _open_neighbours(maze, cell):
+        # strictly smaller only: with equal distances the earlier side in N, E, S, W keeps its place
+        if next_cell is None or steps[neighbour[0]][neighbour[1]] < steps[next_cell[0]][next_cell[1]]:
+            next_cell = neighbour
+    return next_cell
 
 
 def _open_neighbours(maze: MazeGrid, cell: Cell) -> list[Cell]:
