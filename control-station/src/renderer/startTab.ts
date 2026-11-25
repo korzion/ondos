@@ -2,6 +2,7 @@ import { Tab } from "./tab";
 import { BusClient } from "./busClient";
 import { CS_COMMAND, GAME_STATE, State, Command, Mode, MODE_VALUES, ReplaySpeed, RouteStatus, PLAN_ROUTE, VISION_MAZE, Writer, VISION_EVENT, GAME_WARNING, WarningKind, WallSide } from "@shared/topics";
 import { Payload, Callback } from "@shared/bus/bus";
+import { StatusPanel } from "./statusPanel";
 
 type CommandArgs = { mode: Mode | null; file: string | null; speed: ReplaySpeed | null };
 
@@ -54,6 +55,7 @@ export class StartTab extends Tab {
     private current_state: State | null = null;
     private maze_id: string | null = null;
     private route: { maze_id: string; status: RouteStatus } | null = null;
+    readonly status_panel: StatusPanel;
 
     private readonly game_state_callback: Callback = (_topic: string, msg: Payload) => this.update_buttons((msg as {state: State}).state);
 
@@ -98,6 +100,10 @@ export class StartTab extends Tab {
             this.root.appendChild(button);
             this.buttons.set(command, button);
         }
+
+        const status_panel_root = document.createElement("div");
+        this.root.appendChild(status_panel_root);
+        this.status_panel = new StatusPanel(bus_client, status_panel_root);
 
         this.root.appendChild(this.log_list);
 

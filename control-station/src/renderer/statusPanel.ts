@@ -40,9 +40,10 @@ function format_ai_status(msg: AiStatusMessage): string {
     return `AI: ${msg.active_controller} controller, ${msg.status}${policy}`;
 }
 
-// Texts from section 5.5.
+// Texts from section 5.5. Section 5.5 has "Maze OK – press Resume", but the panel shows this
+// line in every game state, not only while paused, so it leaves out "press Resume".
 function format_edit_state(msg: EditStateMessage): string {
-    if (msg.state === "clear" && msg.reason === null) return "Maze OK – press Resume";
+    if (msg.state === "clear" && msg.reason === null) return "Maze OK";
     if (msg.state === "clear" && msg.reason === "no_path") return "No path to the exit";
     return `Maze: ${msg.reason ?? msg.state}`;
 }
