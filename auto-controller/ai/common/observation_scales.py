@@ -5,8 +5,9 @@ Controller divide by the same numbers.
 """
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass, fields
+
+from ai.common.finite_number import is_finite_number
 
 # STARTING VALUES, to be tuned with the first trained models.
 DEFAULT_VELOCITY_SCALE_MM_S = 500.0     # a fast ball on the plate
@@ -25,7 +26,7 @@ class ObservationScales:
     def __post_init__(self) -> None:
         for field in fields(self):
             value = getattr(self, field.name)
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            if not is_finite_number(value) or value <= 0:
                 raise ValueError(f"observation scale {field.name} must be a number > 0, got {value!r}")
 
     @classmethod

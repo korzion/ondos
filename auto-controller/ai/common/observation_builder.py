@@ -6,12 +6,12 @@ so the same model also works on a changed maze. The keys are the bus field names
 """
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping, Sequence
 
 import numpy as np
 from gymnasium import spaces
 
+from ai.common.finite_number import is_finite_number
 from ai.common.observation_scales import ObservationScales
 
 ROUTE_POINT_COUNT = 3  # the next 3 route points (D.5; plan/route sends up to 3)
@@ -41,8 +41,11 @@ class ObservationBuilder:
         """The scaled observation.
 
         ball: vision/ball fields (x_mm, y_mm, vx_mm_s, vy_mm_s); tilt: platform/state fields (tilt_x_deg,
-        tilt_y_deg); previous_action: the last target tilt in degrees (0, 0 after a reset);
-        targets: plan/route target_points_mm (1 to 3 points). Raises ValueError on missing or non-finite values.
+        tilt_y_deg); targets: plan/route target_points_mm (1 to 3 points, a list or a NumPy array).
+        previous_action: the previous command in degrees. At runtime it is the last *published* target tilt
+        (after to_target_tilt_deg and OutputShaper); in training it is the action the environment received.
+        It is (0, 0) after a reset (when to reset is decided by AutoControllerApp, #62).
+        Plain and NumPy numbers are accepted. Raises ValueError on missing or non-finite values.
         """
         observation = {}
         for key in VELOCITY_KEYS:
@@ -57,6 +60,8 @@ class ObservationBuilder:
     @staticmethod
     def observation_space() -> spaces.Dict:
         """The gymnasium space of build()'s output; TrainEnv and the trainers use the same space (IF-08)."""
+        # ASSUMPTION (#64): not in the D.5 interface; added so TrainEnv, the trainers and the AI Controller
+        # share one space, and a model trained on another observation is refused.
         scalar = spaces.Box(-np.inf, np.inf, SCALAR_SHAPE, OBSERVATION_DTYPE)
         scalar_keys = VELOCITY_KEYS + TILT_KEYS + PREVIOUS_ACTION_KEYS
         entries = {key: scalar for key in scalar_keys}
@@ -65,7 +70,7 @@ class ObservationBuilder:
         return spaces.Dict(entries)
 
     def _relative_targets(self, ball: Mapping[str, float], targets: Sequence[Sequence[float]]) -> np.ndarray:
-        if not targets:
+        if len(targets) == 0:  # len(), not truthiness: a NumPy array has no truth value
             raise ValueError("the route has no target points")
         ball_position_mm = np.array([_finite(ball[key], key) for key in BALL_POSITION_KEYS])
         points_mm = np.array(_padded(targets), dtype=np.float64)
@@ -77,12 +82,14 @@ class ObservationBuilder:
 
 def _padded(targets: Sequence[Sequence[float]]) -> list[Sequence[float]]:
     """The first ROUTE_POINT_COUNT points; a shorter route repeats its last point (near the exit)."""
+    # ASSUMPTION (#64): D.5 says "the next 3 route points" but plan/route sends fewer near the exit. Repeating
+    # the last point keeps the observation size fixed and shows the model the target it must stop at.
     points = list(targets[:ROUTE_POINT_COUNT])
     return points + [points[-1]] * (ROUTE_POINT_COUNT - len(points))
 
 
 def _finite(value: object, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if not is_finite_number(value):
         raise ValueError(f"{name} must be a finite number, got {value!r}")
     return float(value)
 

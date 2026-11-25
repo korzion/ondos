@@ -55,6 +55,34 @@ def test_default_scales_are_used_without_a_model():
     assert ObservationBuilder().scales == ObservationScales()
 
 
+def as_numpy_inputs():
+    """The same inputs as a physics environment gives them: NumPy numbers and arrays."""
+    return {
+        "ball": {key: np.float32(value) for key, value in BALL.items()},
+        "tilt": {key: np.float32(value) for key, value in TILT.items()},
+        "previous_action": np.array(PREVIOUS_ACTION, dtype=np.float32),
+        "targets": np.array(TARGETS, dtype=np.float64),
+    }
+
+
+def test_numpy_inputs_give_the_same_observation():
+    numpy_observation = build(**as_numpy_inputs())
+    plain_observation = build()
+    for key, value in plain_observation.items():
+        assert numpy_observation[key] == pytest.approx(value), key
+
+
+def test_numpy_integers_and_a_single_point_array_are_accepted():
+    ball = {**BALL, "x_mm": np.int64(20)}
+    observation = build(ball=ball, targets=np.array([[30.0, -10.0]]))
+    assert observation[TARGET_POINTS_KEY] == pytest.approx(np.array([[0.2, 0.0]] * ROUTE_POINT_COUNT))
+
+
+def test_empty_numpy_route_is_refused():
+    with pytest.raises(ValueError, match="no target points"):
+        build(targets=np.empty((0, 2)))
+
+
 @pytest.mark.parametrize("changes", [
     {"targets": []},
     {"targets": [[1.0, float("nan")]]},
@@ -62,6 +90,8 @@ def test_default_scales_are_used_without_a_model():
     {"ball": {**BALL, "vx_mm_s": float("inf")}},
     {"ball": {**BALL, "x_mm": None}},
     {"tilt": {**TILT, "tilt_x_deg": True}},
+    {"tilt": {**TILT, "tilt_x_deg": np.float32("nan")}},
+    {"tilt": {**TILT, "tilt_x_deg": np.bool_(True)}},
     {"previous_action": (1.0,)},
 ])
 def test_invalid_inputs_are_refused(changes):
