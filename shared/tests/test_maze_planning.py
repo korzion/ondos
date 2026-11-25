@@ -127,5 +127,14 @@ def test_ball_outside_the_grid_gives_invalid():
     assert route_at(example_maze(), -50.0, 0.0) == Route(ROUTE_INVALID, None, (), None)
 
 
+def test_distance_map_and_route_in_a_maze_with_a_single_row():
+    # one row of three cells, exit in the right cell (0, 2)
+    corridor = dataclasses.replace(example_maze(), rows=1, cols=3, origin_x_mm=-60.0, origin_y_mm=-20.0,
+                                   walls=((13, 5, 7),), start_cell=(0, 0), exit_cell=(0, 2),
+                                   exit_x_mm=40.0, exit_y_mm=0.0)
+    assert build_distance_map(corridor) == [[2, 1, 0]]
+    assert route_at(corridor, -40.0, 0.0) == Route(ROUTE_VALID, (0, 0), ((0.0, 0.0), (40.0, 0.0)), 2)
+
+
 def test_route_status_values_are_the_ones_of_the_interface():
     assert {ROUTE_VALID, ROUTE_NO_PATH, ROUTE_INVALID} == set(T.ROUTE_STATUS_VALUES)
