@@ -111,7 +111,40 @@
       "step": 0.01,
       "choices": null,
       "is_live": true,
-      "description": "Proportional gain."
+      "description": "Proportional gain (deg/mm)."
+    },
+    {
+      "name": "pid_ki_deg_per_mm_per_s",
+      "value": 0.02,
+      "default": 0.02,
+      "min": 0,
+      "max": 0.2,
+      "step": 0.01,
+      "choices": null,
+      "is_live": true,
+      "description": "Integral gain (deg/(mm·s))."
+    },
+    {
+      "name": "pid_kd_deg_per_mm_s",
+      "value": 0.05,
+      "default": 0.05,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.01,
+      "choices": null,
+      "is_live": true,
+      "description": "Velocity damping gain (deg per mm/s)."
+    },
+    {
+      "name": "pid_integral_limit_deg",
+      "value": 3,
+      "default": 3,
+      "min": 0,
+      "max": 10,
+      "step": 0.5,
+      "choices": null,
+      "is_live": true,
+      "description": "Largest tilt the integral term may add (±deg)."
     }
   ]
 }

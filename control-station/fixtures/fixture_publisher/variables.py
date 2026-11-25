@@ -1,10 +1,15 @@
 """cs/variables/<key>: check the value against the spec file, keep it, and publish the spec again (IF-07)."""
 from shared import topics as T
-from topic_table import Publication, publication, writer_of
+from shared.interfaces import ValidationError, validate
+from topic_table import STAND_IN_PROGRAMS, Publication, publication, writer_of
+
+ENVELOPE = {"timestamp_s": 0.0, "seq": 0, "version": 1}
 
 
 class VariableSpecs:
     def __init__(self, specs: dict[str, list[dict]]) -> None:
+        """Raises ValueError, naming the key, when a key or a variable in the file is wrong."""
+        _check_specs(specs)
         self._specs = {key: tuple(variables) for key, variables in specs.items()}
 
     def start_publications(self) -> list[Publication]:
@@ -23,6 +28,19 @@ class VariableSpecs:
 
     def _publication(self, key: str) -> Publication:
         return publication(T.variables_spec(key), {"variables": list(self._specs[key])})
+
+
+def _check_specs(specs: dict[str, list[dict]]) -> None:
+    for key, variables in specs.items():
+        owner = T.KEY_OWNER.get(key)
+        if owner is None:
+            raise ValueError(f"unknown key {key!r}; allowed: {sorted(T.KEY_OWNER)}")
+        if owner not in STAND_IN_PROGRAMS:
+            raise ValueError(f"{key} belongs to {owner}, which this publisher does not stand in for")
+        try:
+            validate(T.variables_spec(key), {**ENVELOPE, "writer": owner, "variables": variables})
+        except ValidationError as error:
+            raise ValueError(f"{key}: {error.message}") from None
 
 
 def _with_checked_value(spec: dict, value) -> dict:

@@ -8,11 +8,12 @@ import json
 from pathlib import Path
 
 from player import Player
+from shared import topics as T
 from shared.tools.replay import load_fixture
 from topic_table import STAND_IN_PROGRAMS, Publication, writer_of
 from variables import VariableSpecs
 
-COMMAND_SENDER = "cs_app"
+COMMAND_SENDER = writer_of(T.CS_COMMAND)  # the Control Station app, from topics.json
 ACTION_KEYS = ("play", "streams", "override", "clear_override", "after_s")
 KEY_RESPOND_OFF, KEY_RESPOND_ON = "n", "y"
 
@@ -36,7 +37,10 @@ class Engine:
         self._behaviour = _read_json(data_dir / "behaviour.json")
         self._events = sorted(_read_json(data_dir / "events.json") if (data_dir / "events.json").exists() else [],
                               key=lambda event: event["t_s"])
-        self._variables = VariableSpecs(_read_json(data_dir / "variables_spec.json"))
+        try:
+            self._variables = VariableSpecs(_read_json(data_dir / "variables_spec.json"))
+        except ValueError as error:
+            raise DataError(f"variables_spec.json: {error}") from None
         self._files = {name: _load_lines(data_dir, name) for name in _referenced_files(self._behaviour)}
         self._check_behaviour()
         self._streams: dict[str, Player] = {}

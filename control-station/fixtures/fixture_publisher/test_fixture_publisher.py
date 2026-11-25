@@ -135,9 +135,10 @@ def test_nothing_from_game_manager_and_only_stand_in_programs(engine):
 def test_the_loop_starts_again(engine):
     loop_s = json.loads((DATA / "behaviour.json").read_text(encoding="utf-8"))["loop_s"]
     balls = of_topic(run(engine, loop_s + 1.0), T.VISION_BALL)
-    first = balls[0].fields
-    assert any(b.fields == first for b in balls[1:])  # the ball is back at its start
-    assert abs(len(balls) - 30 * (loop_s + 1.0)) <= 2
+    samples_per_loop = round(loop_s * EXPECTED_RATE_HZ[T.VISION_BALL])
+    assert len({(b.fields["x_mm"], b.fields["y_mm"]) for b in balls}) > 1  # the ball moves during the loop
+    assert balls[samples_per_loop].fields == balls[0].fields  # and the second loop starts with the first sample
+    assert abs(len(balls) - EXPECTED_RATE_HZ[T.VISION_BALL] * (loop_s + 1.0)) <= 2
 
 
 # ---------------------------------------------------------------- 4 commands
@@ -224,6 +225,31 @@ def test_unknown_action_is_refused(data_copy):
     behaviour["triggers"]["h"]["do"].append({"explode": True})
     (data_copy / "behaviour.json").write_text(json.dumps(behaviour), encoding="utf-8")
     with pytest.raises(DataError, match="explode"):
+        Engine(data_copy)
+
+
+def change_variable_specs(data_copy, change):
+    path = data_copy / "variables_spec.json"
+    specs = json.loads(path.read_text(encoding="utf-8"))
+    change(specs)
+    path.write_text(json.dumps(specs), encoding="utf-8")
+
+
+def test_variable_specs_of_another_program_are_refused_with_a_data_error(data_copy):
+    change_variable_specs(data_copy, lambda specs: specs.update({"game": specs["pid"]}))  # GameManager's own key
+    with pytest.raises(DataError, match="variables_spec.json.*game"):
+        Engine(data_copy)
+
+
+def test_unknown_variable_key_is_refused_with_a_data_error(data_copy):
+    change_variable_specs(data_copy, lambda specs: specs.update({"no_such_key": specs["pid"]}))
+    with pytest.raises(DataError, match="no_such_key"):
+        Engine(data_copy)
+
+
+def test_variable_with_a_missing_field_is_refused_with_a_data_error(data_copy):
+    change_variable_specs(data_copy, lambda specs: specs["pid"][0].pop("choices"))
+    with pytest.raises(DataError, match="variables_spec.json.*pid"):
         Engine(data_copy)
 
 
