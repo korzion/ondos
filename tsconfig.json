@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["shared/**/*.ts", "control-station/recorder.ts"]
+  "include": ["shared/**/*.ts"]
 }

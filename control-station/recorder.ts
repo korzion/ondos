@@ -2,14 +2,13 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Bus, nowS, type Message, type Payload } from "../shared/bus/bus";
 import * as T from "../shared/topics";
 
 const DEFAULT_RECORDING_FOLDER = "recordings";
 const DEFAULT_RECORDING_TAIL_S = 2;
 const IMAGE_TOPIC = T.VISION_IMAGE;
-const HEADER_FORMAT_VERSION = 1;
 const TAIL_CHECK_MS = 50;
 
 type GameStateMessage = Message & {
@@ -39,85 +38,39 @@ interface RecorderOptions {
   recordingFolder: string;
   recordingTailS: number;
   busUrl: string;
-  recordingFolderOverride: boolean;
-  recordingTailOverride: boolean;
 }
 
 function recordingPatterns(): string[] {
-  const fixedTopics: string[] = [];
-  for (const value of Object.values(T)) {
-    if (typeof value !== "string") continue;
-    try {
-      T.topicInfo(value);
-      if (value !== IMAGE_TOPIC) fixedTopics.push(value);
-    } catch {
-      continue;
-    }
-  }
-  const variableTopics = T.CONFIG_KEY_VALUES.flatMap((key) => [T.variablesSpec(key), T.csVariables(key)]);
-  const onlineTopics = T.WRITER_VALUES.map(T.sysOnline);
-  return [...new Set([...fixedTopics, ...variableTopics, ...onlineTopics])];
+  return [...new Set(T.TOPIC_TABLE
+    .filter((entry) => entry.name !== IMAGE_TOPIC)
+    .map((entry) => entry.name.replace(/\{[^}]+\}/g, "+")))];
 }
 
-function currentGitCommit(): string | null {
-  const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });
+function currentGitCommit(scriptFolder: string): string | null {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: scriptFolder, encoding: "utf8" });
   return result.status === 0 ? result.stdout.trim() || null : null;
 }
 
 function parseArgs(argv: string[]): RecorderOptions {
-  const folderFromEnvironment = process.env.ONDOS_RECORDING_FOLDER;
-  const tailFromEnvironment = process.env.ONDOS_RECORDING_TAIL_S;
-  const options: RecorderOptions = {
-    recordingFolder: folderFromEnvironment ?? DEFAULT_RECORDING_FOLDER,
-    recordingTailS: Number(tailFromEnvironment ?? DEFAULT_RECORDING_TAIL_S),
-    busUrl: process.env.ONDOS_MQTT_URL ?? `mqtt://${T.BROKER_HOST}:${T.BROKER_TCP_PORT}`,
-    recordingFolderOverride: folderFromEnvironment !== undefined,
-    recordingTailOverride: tailFromEnvironment !== undefined,
+  if (argv.length > 1) throw new Error("usage: npm run recorder -- [broker-url]");
+  return {
+    recordingFolder: DEFAULT_RECORDING_FOLDER,
+    recordingTailS: DEFAULT_RECORDING_TAIL_S,
+    busUrl: argv[0] ?? `mqtt://${T.BROKER_HOST}:${T.BROKER_TCP_PORT}`,
   };
-  for (let index = 0; index < argv.length; index++) {
-    const value = argv[index + 1];
-    switch (argv[index]) {
-      case "--recordings":
-        if (!value) throw new Error("--recordings requires a folder path");
-        options.recordingFolder = value;
-        options.recordingFolderOverride = true;
-        index++;
-        break;
-      case "--tail-s":
-        if (!value || !Number.isFinite(Number(value)) || Number(value) < 0) {
-          throw new Error("--tail-s requires a non-negative number");
-        }
-        options.recordingTailS = Number(value);
-        options.recordingTailOverride = true;
-        index++;
-        break;
-      case "--url":
-        if (!value) throw new Error("--url requires a broker URL");
-        options.busUrl = value;
-        index++;
-        break;
-      default:
-        throw new Error(`unknown argument ${argv[index]}`);
-    }
-  }
-  if (!Number.isFinite(options.recordingTailS) || options.recordingTailS < 0) {
-    throw new Error("recording tail must be a non-negative number");
-  }
-  return options;
 }
 
 export class Recorder {
   private readonly bus: Bus;
+  private readonly gitCommit: string | null;
   private recordingFolder: string;
   private recordingTailS: number;
-  private readonly recordingFolderOverride: boolean;
-  private readonly recordingTailOverride: boolean;
   private readonly retainedMessages = new Map<string, RecordingLine>();
   private readonly writtenRetainedMessageKeys = new Map<string, string>();
   private file: FileHandle | null = null;
   private activeGameId: string | null = null;
   private gameState: GameStateMessage | null = null;
-  private hasPlayed = false;
+  private setupDuringTail = false;
   private activeRecordingTailS = DEFAULT_RECORDING_TAIL_S;
   private tailStartedAtS: number | null = null;
   private tailTimer: NodeJS.Timeout | null = null;
@@ -126,16 +79,14 @@ export class Recorder {
 
   constructor(options: RecorderOptions) {
     this.bus = new Bus("recorder", options.busUrl);
+    this.gitCommit = currentGitCommit(path.dirname(fileURLToPath(import.meta.url)));
     this.recordingFolder = options.recordingFolder;
     this.recordingTailS = options.recordingTailS;
-    this.recordingFolderOverride = options.recordingFolderOverride;
-    this.recordingTailOverride = options.recordingTailOverride;
   }
 
   async start(): Promise<void> {
     for (const topic of recordingPatterns()) {
-      this.bus.subscribe(topic, (receivedTopic, msg, tRecvS) => this.on_message(receivedTopic, msg, tRecvS),
-        { acceptReplay: true });
+      this.bus.subscribe(topic, (receivedTopic, msg, tRecvS) => this.on_message(receivedTopic, msg, tRecvS));
     }
     await this.bus.connect();
     console.info(`recorder online; recordings: ${path.resolve(this.recordingFolder)}`);
@@ -151,12 +102,6 @@ export class Recorder {
   }
 
   on_message(topic: string, msg: Payload, t_recv_s: number): void {
-    if (process.env.ONDOS_RECORDER_DEBUG === "1" && topic === T.GAME_STATE && isMessage(msg)) {
-      console.info(`game state ${String(msg.state)} ${String(msg.game_id)}`);
-    }
-    if (process.env.ONDOS_RECORDER_DEBUG === "1" && isReplayMessage(msg)) {
-      console.info(`ignored replay message ${topic}`);
-    }
     this.enqueue(() => this.processMessage(topic, msg, t_recv_s));
   }
 
@@ -166,13 +111,13 @@ export class Recorder {
 
   private async processMessage(topic: string, msg: Payload, tRecvS: number): Promise<void> {
     this.updateRecordingSettings(topic, msg);
-    if (topic !== IMAGE_TOPIC && !isReplayMessage(msg) && T.topicInfo(topic).retained) {
+    if (topic !== IMAGE_TOPIC && T.topicInfo(topic).retained) {
       this.retainedMessages.set(topic, { t_recv_s: tRecvS, topic, msg });
     }
     if (topic === T.GAME_STATE && isMessage(msg)) {
       await this.onGameState(msg as GameStateMessage, tRecvS);
     }
-    if (!this.file || topic === IMAGE_TOPIC || isReplayMessage(msg)) return;
+    if (!this.file || this.setupDuringTail || topic === IMAGE_TOPIC) return;
     const line: RecordingLine = { t_recv_s: tRecvS, topic, msg };
     await this.writeLine(line);
   }
@@ -187,21 +132,30 @@ export class Recorder {
       return;
     }
     if (topic === T.csVariables("cs")) {
-      this.applyRecordingSetting("recording_folder", msg.recording_folder);
-      this.applyRecordingSetting("recording_tail_s", msg.recording_tail_s);
+      for (const [name, value] of Object.entries(msg)) this.applyRecordingSetting(name, value);
     }
   }
 
   private applyRecordingSetting(name: string, value: unknown): void {
-    if (name === "recording_folder" && !this.recordingFolderOverride && typeof value === "string" && value.length > 0) {
+    if (!T.VARIABLES.cs.includes(name)) return;
+    if (name === "recording_folder" && typeof value === "string" && value.length > 0) {
       this.recordingFolder = value;
     }
-    if (name === "recording_tail_s" && !this.recordingTailOverride && typeof value === "number" && value >= 0) {
+    if (name === "recording_tail_s" && typeof value === "number" && Number.isFinite(value) && value >= 0) {
       this.recordingTailS = value;
+      this.activeRecordingTailS = value;
     }
   }
 
   private async onGameState(msg: GameStateMessage, tRecvS: number): Promise<void> {
+    if (msg.state === "setup") {
+      if (this.file && this.tailStartedAtS === null) {
+        await this.close_file();
+      } else if (this.file) {
+        this.setupDuringTail = true;
+      }
+      return;
+    }
     if (msg.state === "ready" && msg.game_id && msg.game_id !== this.activeGameId) {
       await this.close_file();
       this.gameState = msg;
@@ -210,11 +164,8 @@ export class Recorder {
     if (msg.game_id !== this.activeGameId || !this.file) return;
 
     if (msg.state === "playing") {
-      this.hasPlayed = true;
+      this.setupDuringTail = false;
       this.cancelTail();
-    } else if (msg.state === "setup") {
-      if (!this.hasPlayed) await this.close_file();
-      return;
     } else if (msg.state === "finished" || msg.state === "e_stop") {
       this.startTail(tRecvS);
     } else {
@@ -234,20 +185,20 @@ export class Recorder {
       try {
         this.file = await open(filename, "wx");
         this.activeGameId = game_id;
-        this.hasPlayed = false;
+        this.setupDuringTail = false;
         this.activeRecordingTailS = this.recordingTailS;
         this.tailStartedAtS = null;
         const header: RecordingHeader = {
           type: "header",
-          format_version: HEADER_FORMAT_VERSION,
+          format_version: T.RECORDING_FORMAT_VERSION,
           game_id,
           maze_id: state.maze_id ?? "",
           mode: state.mode,
           start_time_s: nowS(),
-          git_commit: currentGitCommit(),
+          git_commit: this.gitCommit,
         };
         await this.writeJson(header);
-        await this.writeInitialSnapshot(state.maze_id);
+        await this.writeInitialSnapshot(state.maze_id, header.start_time_s);
         this.bus.resubscribe();
         console.info(`recording ${filename}`);
         return;
@@ -258,7 +209,7 @@ export class Recorder {
     }
   }
 
-  private async writeInitialSnapshot(mazeId: string | null): Promise<void> {
+  private async writeInitialSnapshot(mazeId: string | null, receivedAtS: number): Promise<void> {
     const snapshots = [...this.retainedMessages.values()].filter((line) => {
       if (line.topic !== T.VISION_MAZE && line.topic !== T.PLAN_DISTANCE_MAP) return true;
       return isMessage(line.msg) && line.msg.maze_id === mazeId;
@@ -268,7 +219,8 @@ export class Recorder {
       return rank(left.topic) - rank(right.topic) || left.t_recv_s - right.t_recv_s;
     });
     for (const line of snapshots) {
-      if (line.topic !== T.GAME_STATE) await this.writeLine(line);
+      if (line.topic === T.GAME_STATE) continue;
+      await this.writeLine({ ...line, t_recv_s: receivedAtS });
     }
   }
 
@@ -306,7 +258,7 @@ export class Recorder {
     const file = this.file;
     this.file = null;
     this.activeGameId = null;
-    this.hasPlayed = false;
+    this.setupDuringTail = false;
     this.activeRecordingTailS = this.recordingTailS;
     this.gameState = null;
     this.writtenRetainedMessageKeys.clear();
@@ -332,17 +284,15 @@ function isMessage(msg: Payload): msg is Message {
   return typeof msg === "object" && !(msg instanceof Uint8Array) && msg !== null;
 }
 
-function isReplayMessage(msg: Payload): boolean {
-  return isMessage(msg) && msg.writer === "replay";
-}
-
 async function main(): Promise<void> {
   const recorder = new Recorder(parseArgs(process.argv.slice(2)));
   await recorder.start();
   const shutdown = () => {
-    void recorder.stop().catch((error: unknown) => {
+    void recorder.stop().then(() => {
+      process.exit(0);
+    }).catch((error: unknown) => {
       console.error("recorder shutdown failed", error);
-      process.exitCode = 1;
+      process.exit(1);
     });
   };
   process.once("SIGINT", shutdown);
