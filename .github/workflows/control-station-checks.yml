@@ -7,7 +7,7 @@ on:
     paths: ["control-station/**", "shared/**", "package.json", "package-lock.json", "tsconfig.json", ".github/workflows/control-station-checks.yml"]
   push:
     branches: [main]
-    paths: ["control-station/**", "shared/**", "package.json", "package-lock.json", "tsconfig.json"]
+    paths: ["control-station/**", "shared/**", "package.json", "package-lock.json", "tsconfig.json", ".github/workflows/control-station-checks.yml"]
 
 jobs:
   typecheck-and-build:

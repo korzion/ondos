@@ -106,23 +106,16 @@ export class StartTab extends Tab {
         // disable the buttons until state arrives
         this.update_buttons(null);
 
-        // For logs
-        this.bus_client.subscribe(GAME_WARNING, this.log_callback);
-        this.bus_client.subscribe(VISION_EVENT, this.log_callback);
-    }
-
-    on_open(): void {
-        super.on_open();
+        // Subscribed for the tab's whole life, not only while it is open: subscribing again on open
+        // would hand update_buttons() the cached game/state and undo update_buttons(null) from
+        // TopicHealthMonitor (#83, "No GameManager").
         this.bus_client.subscribe(GAME_STATE, this.game_state_callback);
         this.bus_client.subscribe(VISION_MAZE, this.maze_callback);
         this.bus_client.subscribe(PLAN_ROUTE, this.route_callback);
-    }
 
-    on_close(): void {
-        super.on_close();
-        this.bus_client.unsubscribe(GAME_STATE, this.game_state_callback);
-        this.bus_client.unsubscribe(VISION_MAZE, this.maze_callback);
-        this.bus_client.unsubscribe(PLAN_ROUTE, this.route_callback);
+        // For logs
+        this.bus_client.subscribe(GAME_WARNING, this.log_callback);
+        this.bus_client.subscribe(VISION_EVENT, this.log_callback);
     }
 
     update_buttons(state: State | null): void {
