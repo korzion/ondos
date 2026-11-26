@@ -74,7 +74,7 @@ void loop() {
       (now - lastHostStateMs < ondos::HOST_STATE_TIMEOUT_MS);
   platformState.is_laptop_connected = laptopConnected ? 1 : 0;
   if (now - lastPlatformStateMs >= 20) {
-    lastPlatformStateMs = now;
+    lastPlatformStateMs += 20;
     serialHandler.sendFrame(reinterpret_cast<const uint8_t*>(&platformState),
                             sizeof(platformState));
   }

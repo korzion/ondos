@@ -32,7 +32,10 @@ class SerialHandler {
                                size_t& payloadSize);
 
   static constexpr size_t MAX_PAYLOAD_SIZE = 48;
-  static constexpr size_t MAX_ENCODED_SIZE = MAX_PAYLOAD_SIZE + 4;
+  // Payload + two CRC bytes needs at most one additional COBS code byte.
+  // Keeping the receive bound exact also caps malformed-frame decode output
+  // at MAX_PAYLOAD_SIZE + 2 bytes.
+  static constexpr size_t MAX_ENCODED_SIZE = MAX_PAYLOAD_SIZE + 3;
 
  private:
   Stream& stream_;
