@@ -2,6 +2,7 @@ import { Tab } from "./tab";
 import { BusClient } from "./busClient";
 import { CONFIG_KEY_VALUES, ConfigKey, csVariables, variablesSpec } from "@shared/topics";
 import { Message } from "@shared/bus/bus";
+import "./variablesTab.css";
 
 type ControlKind = "switch" | "choice" | "slider" | "number" | "text";
 type ControlElement = HTMLInputElement | HTMLSelectElement;
