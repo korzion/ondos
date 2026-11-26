@@ -15,8 +15,14 @@
     />
     <title>Ondos Control Station</title>
     <style>
+      /* The window is a fixed frame: the top bar (with the E-stop, E-R2) and the tab bar never
+         scroll away; only the open tab (#app) scrolls. */
       body {
         margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
         font-family: system-ui, sans-serif;
         background: #1b2026;
         color: #e6e8eb;
@@ -60,6 +66,10 @@
       }
 
       #app {
+        flex: 1;
+        min-height: 0; /* lets a flex child shrink below its content, so it scrolls instead */
+        overflow: auto;
+        box-sizing: border-box;
         padding: 16px;
       }
 
@@ -79,6 +89,66 @@
       .tab-button.active {
         border-bottom-color: currentColor;
         font-weight: bold;
+      }
+
+      /* Start tab: commands and status stay in place, only the log scrolls. */
+      .start-tab {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .command-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .command-button,
+      .mode-select {
+        padding: 6px 14px;
+        border: 1px solid #3a4350;
+        border-radius: 4px;
+        background: #2f3742;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      .command-button:hover:not(:disabled) {
+        background: #3a4450;
+      }
+      .command-button:disabled,
+      .mode-select:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .status-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        background: #252b33;
+      }
+      .status-line.is-missing {
+        color: #ff8a80;
+      }
+
+      .log-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        margin: 0;
+        padding: 8px 12px;
+        list-style: none;
+        border-radius: 4px;
+        background: #14181d;
+      }
+      .log-line {
+        padding: 2px 0;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 0.85em;
       }
     </style>
   </head>
