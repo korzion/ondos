@@ -267,13 +267,36 @@ export class VariablesTab extends Tab {
         return readout;
     }
 
+    // E.8 "Bad variables_spec": skip that variable and write it to the log.
+    private is_valid_variable(spec: unknown): spec is VariableSpec {
+        if (typeof spec !== "object" || spec === null) return false;
+        const s = spec as VariableSpec;
+        if (typeof s.name !== "string") return false;
+        if (typeof s.value !== "number" && typeof s.value !== "boolean" && typeof s.value !== "string") return false;
+        if (typeof s.default !== "number" && typeof s.default !== "boolean" && typeof s.default !== "string") return false;
+        if (s.min !== null && typeof s.min !== "number") return false;
+        if (s.max !== null && typeof s.max !== "number") return false;
+        if (s.step !== undefined && s.step !== null && typeof s.step !== "number") return false;
+        if (s.choices !== null && !Array.isArray(s.choices)) return false;
+        if (typeof s.is_live !== "boolean") return false;
+        if (typeof s.description !== "string") return false;
+        return true;
+    }
+
     private on_spec(key: ConfigKey, msg: Message): void {
         if (!Array.isArray(msg.variables)) {
+            // TODO(#77): write to the app log once StartTab has it
             console.error(`Invalid variables spec message for key ${key}: "variables" is not an array:`, msg);
             return;
         }
 
-        for (const spec of msg.variables as VariableSpec[]) {
+        for (const spec of msg.variables) {
+            if (!this.is_valid_variable(spec)) {
+                // TODO(#77): write to the app log once StartTab has it
+                console.error(`Invalid variable spec for key ${key}:`, spec);
+                continue;
+            }
+
             this.update(key, spec);
         }
     }
