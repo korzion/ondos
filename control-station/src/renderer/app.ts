@@ -7,6 +7,7 @@ import { Tab } from "./tab";
 import { ExampleTab } from "./exampleTab";
 import { PlotsTab } from "./plotsTab";
 import { CameraTab } from "./cameraTab";
+import { TwinTab } from "./twinTab";
 import { TopBar } from "./topBar";
 
 const BROKER_WS_URL = `ws://${BROKER_HOST}:${BROKER_WS_PORT}`; // the app UI uses the WebSocket listener (IF-03)
@@ -38,6 +39,7 @@ void bus_client.connect();
 const tabs: Tab[] = [
   new ExampleTab("Start", bus_client),
   new PlotsTab("Plots", bus_client),
+  new TwinTab("Twin", bus_client),
   new CameraTab("Camera", bus_client),
 ];
 const tab_buttons = new Map<Tab, HTMLButtonElement>();
