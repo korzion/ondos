@@ -6,6 +6,7 @@ import { BusClient } from "./busClient";
 import { Tab } from "./tab";
 import { PlotsTab } from "./plotsTab";
 import { CameraTab } from "./cameraTab";
+import { TwinTab } from "./twinTab";
 import { TopBar } from "./topBar";
 import { StartTab } from "./startTab";
 
@@ -41,6 +42,7 @@ void bus_client.connect();
 const tabs: Tab[] = [
   start_tab,
   new PlotsTab("Plots", bus_client),
+  new TwinTab("Twin", bus_client),
   new CameraTab("Camera", bus_client),
 ];
 
