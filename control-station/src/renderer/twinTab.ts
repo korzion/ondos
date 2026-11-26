@@ -68,14 +68,12 @@ export class TwinTab extends Tab {
         this.stats_text.style.cursor = "pointer";
         this.stats_text.addEventListener("click", () => this.toggle_stats());
         this.viewport = new ThreeTwinViewport(this.view_area);
-        window.addEventListener("resize", () => this.fit_view_area());
     }
 
     // E.5 and E.10: messages are received and frames drawn only while the tab is open.
     on_open(): void {
         super.on_open();
         for (const [topic, callback] of this.subscriptions) this.bus_client.subscribe(topic, callback);
-        this.fit_view_area();
         this.oldest_undrawn_s = null;
         this.oldest_in_last_frame_s = null;
         this.start_stats_period(nowS());
@@ -189,9 +187,12 @@ export class TwinTab extends Tab {
 
     // ------------------------------------------------------------------ layout
 
+    // The view fills the tab area (#app), whose height the page layout sets; the viewport follows
+    // its size (ResizeObserver), so no window size is read here.
     private create_view_area(): HTMLElement {
+        this.root.style.height = "100%";
         const area = document.createElement("div");
-        area.style.position = "relative"; // the texts and the reset button lie over the 3D view
+        Object.assign(area.style, { position: "relative", height: "100%" }); // texts and the reset button lie over the view
         this.root.appendChild(area);
         return area;
     }
@@ -201,13 +202,6 @@ export class TwinTab extends Tab {
         Object.assign(text.style, { position: "absolute", whiteSpace: "pre", fontSize: OVERLAY_FONT_SIZE, zIndex: "1" }, position);
         this.view_area.appendChild(text);
         return text;
-    }
-
-    // The view fills the window below the bars.
-    private fit_view_area(): void {
-        if (!this.is_tab_active()) return;
-        const top_px = this.view_area.getBoundingClientRect().top;
-        this.view_area.style.height = `${Math.max(window.innerHeight - top_px, 0)}px`;
     }
 }
 
