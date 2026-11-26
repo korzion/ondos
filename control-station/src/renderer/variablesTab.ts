@@ -249,11 +249,22 @@ export class VariablesTab extends Tab {
         control.addEventListener("change", () => this.editing_elements.delete(control));
         control.addEventListener("blur", () => this.end_editing(key, spec.name, control));
 
+        if (!spec.is_live) row.appendChild(this.create_not_live_tag());
+
         const description = document.createElement("span");
         description.className = "variable-description";
         description.textContent = spec.description;
         row.appendChild(description);
         return row;
+    }
+
+    // Section 6.3: "next" variables take effect at the next start, maze read or game, not at once.
+    private create_not_live_tag(): HTMLSpanElement {
+        const tag = document.createElement("span");
+        tag.className = "variable-not-live";
+        tag.textContent = "not live";
+        tag.title = "Takes effect at the next start, maze read or game";
+        return tag;
     }
 
     // Follows the thumb while dragging; render() sets it to the confirmed value.
