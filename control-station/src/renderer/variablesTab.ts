@@ -22,6 +22,7 @@ const DEFAULT_STEP = 1;
 // How long a sent value waits for the module to republish its spec before the control goes back
 // to the confirmed value. Not in the design document: chosen here, noted on #78.
 const MODULE_ANSWER_TIMEOUT_MS = 1000;
+const LIVE_SEND_INTERVAL_MS = 1000 / 10; // IF-07 (cs/variables/<key>): live variables, max 10 per second while sliding
 
 export class VariablesTab extends Tab {
     private values: Map<ConfigKey, Map<string, VariableValue>> = new Map();
@@ -30,6 +31,8 @@ export class VariablesTab extends Tab {
     private slider_readouts: Map<ControlElement, HTMLSpanElement> = new Map(); // the number shown next to each slider
     private pending_timers: Map<ControlElement, number> = new Map(); // sent values waiting for the module to confirm them
     private editing_elements: Set<ControlElement> = new Set(); // controls that the user is currently editing, so we don't overwrite them with a new value
+    private last_sent_ms: Map<ControlElement, number> = new Map(); // when each slider last sent, for the live rate limit
+    private last_sent_value: Map<ControlElement, number> = new Map(); // what each slider last sent, to skip an immediate repeat
 
     constructor(title: string, bus_client: BusClient) {
         super(title, bus_client);
@@ -131,8 +134,31 @@ export class VariablesTab extends Tab {
         element.min = String(spec.min);
         element.max = String(spec.max);
         element.step = spec.step?.toString() ?? DEFAULT_STEP.toString();
-        element.addEventListener("change", () => this.apply(key, spec.name, element.valueAsNumber));
+        // On release, always send the final position, unless "input" sent that same value just now
+        // (a key press or a click on the track fires "input" and "change" together).
+        element.addEventListener("change", () => {
+            const is_repeat = element.valueAsNumber === this.last_sent_value.get(element)
+                && this.ms_since_sent(element) < LIVE_SEND_INTERVAL_MS;
+            if (!is_repeat) this.send_slider(key, spec.name, element);
+        });
+
+        if (spec.is_live) {
+            element.addEventListener("input", () => {
+                if (this.ms_since_sent(element) >= LIVE_SEND_INTERVAL_MS) this.send_slider(key, spec.name, element);
+            });
+        }
+
         return element;
+    }
+
+    private send_slider(key: ConfigKey, name: string, slider: HTMLInputElement): void {
+        this.apply(key, name, slider.valueAsNumber);
+        this.last_sent_ms.set(slider, performance.now());
+        this.last_sent_value.set(slider, slider.valueAsNumber);
+    }
+
+    private ms_since_sent(slider: HTMLInputElement): number {
+        return performance.now() - (this.last_sent_ms.get(slider) ?? -Infinity);
     }
 
     private create_number_input(key: ConfigKey, spec: VariableSpec): HTMLInputElement {
