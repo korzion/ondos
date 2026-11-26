@@ -1,6 +1,6 @@
 import { Tab } from "./tab";
 import { BusClient } from "./busClient";
-import { CONFIG_KEY_VALUES, ConfigKey, csVariables, variablesSpec } from "@shared/topics";
+import { CONFIG_KEY_VALUES, ConfigKey, VARIABLES, csVariables, variablesSpec } from "@shared/topics";
 import { Message } from "@shared/bus/bus";
 import "./variablesTab.css";
 
@@ -26,68 +26,114 @@ const MODULE_ANSWER_TIMEOUT_MS = 1000;
 const LIVE_SEND_INTERVAL_MS = 1000 / 10; // IF-07 (cs/variables/<key>): live variables, max 10 per second while sliding
 
 export class VariablesTab extends Tab {
-    private values: Map<ConfigKey, Map<string, VariableValue>> = new Map();
+    private specs: Map<ConfigKey, Map<string, VariableSpec>> = new Map(); // the latest spec of each variable; its value is the confirmed value
+    private user_values: Map<ConfigKey, Map<string, VariableValue>> = new Map(); // values the user set, sent together on every change
     private key_elements: Map<ConfigKey, Map<string, ControlElement>> = new Map();
     private key_sections: Map<ConfigKey, HTMLElement> = new Map();
     private slider_readouts: Map<ControlElement, HTMLSpanElement> = new Map(); // the number shown next to each slider
     private pending_timers: Map<ControlElement, number> = new Map(); // sent values waiting for the module to confirm them
+    private pending_values: Map<ControlElement, VariableValue> = new Map(); // what each pending control sent
     private editing_elements: Set<ControlElement> = new Set(); // controls that the user is currently editing, so we don't overwrite them with a new value
+    private needs_rebuild: Set<ControlElement> = new Set(); // rows whose spec changed while the user was editing them
     private last_sent_ms: Map<ControlElement, number> = new Map(); // when each slider last sent, for the live rate limit
     private last_sent_value: Map<ControlElement, number> = new Map(); // what each slider last sent, to skip an immediate repeat
 
     constructor(title: string, bus_client: BusClient) {
         super(title, bus_client);
         for (const key of CONFIG_KEY_VALUES) {
-            this.values.set(key, new Map());
-            this.create_section_element(key);
+            this.specs.set(key, new Map());
+            this.user_values.set(key, new Map());
             this.key_elements.set(key, new Map());
+            this.create_section_element(key);
             bus_client.subscribe(variablesSpec(key), (_topic, msg) => this.on_spec(key, msg as Message));
+            bus_client.subscribe(csVariables(key), (_topic, msg) => this.on_sent_values(key, msg as Message));
         }
     }
 
-    private render(key: ConfigKey, spec: VariableSpec): void {
-        const key_elements = this.key_elements.get(key)!;
-        this.key_sections.get(key)!.hidden = false;
-        if (!key_elements.has(spec.name)) {
-            this.create_variable_element(key, spec);
-        }
+    private update(key: ConfigKey, spec: VariableSpec): void {
+        const old_spec = this.specs.get(key)!.get(spec.name);
+        this.specs.get(key)!.set(spec.name, spec);
 
-        const elem = key_elements.get(spec.name)!;
-        this.clear_pending(elem);
-        if (!this.editing_elements.has(elem)) {
-            this.set_element_value(key, spec.name, spec.value);
-        }
+        let control = this.key_elements.get(key)!.get(spec.name);
+        if (control === undefined) control = this.add_variable(key, spec);
+        else if (old_spec !== undefined && !this.same_layout(old_spec, spec)) this.needs_rebuild.add(control);
 
+        // A row whose spec changed is rebuilt now, or when the user stops editing it (end_editing).
+        if (this.needs_rebuild.has(control) && !this.editing_elements.has(control)) control = this.rebuild_variable(key, spec);
+        this.render(control, old_spec, spec);
     }
 
+    // Shows the module's value, unless the user is editing the control or it still waits for an answer.
+    private render(control: ControlElement, old_spec: VariableSpec | undefined, spec: VariableSpec): void {
+        if (this.pending_values.has(control)) {
+            if (!this.module_answered(control, old_spec, spec)) return;
+            this.clear_pending(control);
+        }
+        if (!this.editing_elements.has(control)) this.show_value(control, spec.value);
+    }
+
+    // A module republishes its whole spec when any of its variables changes. The spec answers a pending
+    // control only if this variable's value changed (applied or clamped) or equals what was sent;
+    // otherwise it is the answer to another variable, and the control keeps showing what it sent.
+    private module_answered(control: ControlElement, old_spec: VariableSpec | undefined, spec: VariableSpec): boolean {
+        return old_spec === undefined || spec.value !== old_spec.value || spec.value === this.pending_values.get(control);
+    }
+
+    // cs/variables/<key> is retained, so every send carries all the values the user set for that key,
+    // not only the one that changed (IF-07: "a module that restarts gets the values again").
     private apply(key: ConfigKey, name: string, value: VariableValue): void {
-        const msg: Message = {};
-        msg[name] = value;
+        const control = this.key_elements.get(key)!.get(name)!;
+        const msg: Message = { ...this.values_to_send(key), [name]: value };
         if (this.bus_client.publish(csVariables(key), msg)) {
-            this.mark_pending(key, name, this.key_elements.get(key)!.get(name)!);
+            this.user_values.get(key)!.set(name, value);
+            this.mark_pending(key, name, control, value);
         }
         else {
             console.warn(`${key}/${name}: failed to publish new value`);
-            this.set_element_value(key, name, this.values.get(key)!.get(name)!); // put back the confirmed value
+            this.show_value(control, this.confirmed_value(key, name)); // put back the confirmed value
         }
     }
 
-    private mark_pending(key: ConfigKey, name: string, control: ControlElement): void {
+    // The values the user set, for the variables that are still in the module's spec.
+    private values_to_send(key: ConfigKey): Message {
+        const specs = this.specs.get(key)!;
+        return Object.fromEntries([...this.user_values.get(key)!].filter(([name]) => specs.has(name)));
+    }
+
+    // The retained cs/variables/<key> holds what the user set before the app (re)started, so the next
+    // send does not drop those values. Values set since then are kept; the app's own sends come back
+    // here too and change nothing.
+    private on_sent_values(key: ConfigKey, msg: Message): void {
+        const user_values = this.user_values.get(key)!;
+        for (const name of VARIABLES[key]) {
+            const value = msg[name];
+            if (user_values.has(name)) continue;
+            if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") user_values.set(name, value);
+        }
+    }
+
+    private confirmed_value(key: ConfigKey, name: string): VariableValue {
+        return this.specs.get(key)!.get(name)!.value;
+    }
+
+    private mark_pending(key: ConfigKey, name: string, control: ControlElement, value: VariableValue): void {
         this.clear_pending(control); // a second change restarts the wait
+        this.pending_values.set(control, value);
         control.parentElement!.classList.add("variable-pending");
         const id = window.setTimeout(() => {
             this.clear_pending(control);
-            this.set_element_value(key, name, this.values.get(key)!.get(name)!); // put back the confirmed value
+            this.show_value(control, this.confirmed_value(key, name)); // put back the confirmed value
             console.warn(`${key}/${name}: no answer from the module`);
         }, MODULE_ANSWER_TIMEOUT_MS);
         this.pending_timers.set(control, id);
     }
 
     private clear_pending(control: ControlElement): void {
-        control.parentElement!.classList.remove("variable-pending");
+        control.parentElement?.classList.remove("variable-pending");
         const id = this.pending_timers.get(control);
         if (id !== undefined) window.clearTimeout(id);
         this.pending_timers.delete(control);
+        this.pending_values.delete(control);
     }
 
     private control_kind(spec: VariableSpec): ControlKind {
@@ -95,6 +141,17 @@ export class VariablesTab extends Tab {
         if (typeof spec.value === "boolean") return "switch";
         if (typeof spec.value === "number") return spec.min !== null && spec.max !== null ? "slider" : "number";
         return "text";
+    }
+
+    // Everything but the value decides how a row looks and what it can send.
+    private same_layout(a: VariableSpec, b: VariableSpec): boolean {
+        return this.control_kind(a) === this.control_kind(b)
+            && a.min === b.min
+            && a.max === b.max
+            && (a.step ?? null) === (b.step ?? null)
+            && JSON.stringify(a.choices) === JSON.stringify(b.choices)
+            && a.is_live === b.is_live
+            && a.description === b.description;
     }
 
     private create_section_element(key: ConfigKey): void {
@@ -115,6 +172,8 @@ export class VariablesTab extends Tab {
         return element;
     }
 
+    // spec.choices is the list this dropdown was built from, so selectedIndex always matches it;
+    // when the module changes the list, the row is rebuilt (update).
     private create_choice(key: ConfigKey, spec: VariableSpec): HTMLSelectElement {
         const element = document.createElement("select");
         if (spec.choices) {
@@ -171,7 +230,7 @@ export class VariablesTab extends Tab {
         element.addEventListener("change", () => {
             const value = element.valueAsNumber;
             if (Number.isNaN(value)) {
-                element.value = String(this.values.get(key)!.get(spec.name));   // put back the confirmed value
+                this.show_value(element, this.confirmed_value(key, spec.name)); // put back the confirmed value
                 return;
             }
             this.apply(key, spec.name, value);
@@ -186,36 +245,55 @@ export class VariablesTab extends Tab {
         return element;
     }
 
-    private create_variable_element(key: ConfigKey, spec: VariableSpec): void {
-        let element: ControlElement | null = null;
+    private create_control(key: ConfigKey, spec: VariableSpec): ControlElement {
         switch (this.control_kind(spec)) {
-            case "switch":
-                element = this.create_switch(key, spec);
-                break;
-
-            case "choice":
-                element = this.create_choice(key, spec);
-                break;
-
-            case "slider":
-                element = this.create_slider(key, spec);
-                break;
-
-            case "number":
-                element = this.create_number_input(key, spec);
-                break;
-
-            case "text":
-                element = this.create_text_input(key, spec);
-                break;
+            case "switch": return this.create_switch(key, spec);
+            case "choice": return this.create_choice(key, spec);
+            case "slider": return this.create_slider(key, spec);
+            case "number": return this.create_number_input(key, spec);
+            case "text": return this.create_text_input(key, spec);
         }
-
-        this.key_elements.get(key)!.set(spec.name, element);
-        this.key_sections.get(key)!.appendChild(this.create_row(key, spec, element));
     }
 
-    private set_element_value(key: ConfigKey, name: string, value: VariableValue): void {
+    private add_variable(key: ConfigKey, spec: VariableSpec): ControlElement {
+        const control = this.create_control(key, spec);
+        this.key_elements.get(key)!.set(spec.name, control);
+        this.key_sections.get(key)!.appendChild(this.create_row(key, spec, control));
+        return control;
+    }
+
+    // Builds the row again from the new spec, in the same place, showing the confirmed value.
+    private rebuild_variable(key: ConfigKey, spec: VariableSpec): ControlElement {
+        const old_control = this.key_elements.get(key)!.get(spec.name)!;
+        const control = this.create_control(key, spec);
+        this.key_elements.get(key)!.set(spec.name, control);
+        old_control.parentElement!.replaceWith(this.create_row(key, spec, control));
+        this.forget_control(old_control);
+        this.show_value(control, spec.value);
+        return control;
+    }
+
+    // A variable that is no longer in the module's spec.
+    private remove_variable(key: ConfigKey, name: string): void {
         const control = this.key_elements.get(key)!.get(name)!;
+        control.parentElement!.remove();
+        this.forget_control(control);
+        this.key_elements.get(key)!.delete(name);
+        this.specs.get(key)!.delete(name);
+        this.user_values.get(key)!.delete(name);
+    }
+
+    // Drops everything kept for a control that was rebuilt or removed.
+    private forget_control(control: ControlElement): void {
+        this.clear_pending(control);
+        this.editing_elements.delete(control);
+        this.needs_rebuild.delete(control);
+        this.slider_readouts.delete(control);
+        this.last_sent_ms.delete(control);
+        this.last_sent_value.delete(control);
+    }
+
+    private show_value(control: ControlElement, value: VariableValue): void {
         if (control instanceof HTMLInputElement && control.type === "checkbox") control.checked = value as boolean;
         else control.value = String(value);
 
@@ -225,10 +303,14 @@ export class VariablesTab extends Tab {
 
     private end_editing(key: ConfigKey, name: string, control: ControlElement): void {
         this.editing_elements.delete(control);
-        if (!this.pending_timers.has(control)) {
-            this.set_element_value(key, name, this.values.get(key)!.get(name)!); // nothing sent: show the confirmed value
+        if (this.key_elements.get(key)!.get(name) !== control) return; // the row was rebuilt or removed meanwhile
+        if (this.needs_rebuild.has(control)) {
+            this.rebuild_variable(key, this.specs.get(key)!.get(name)!);
+            return;
         }
-
+        if (!this.pending_timers.has(control)) {
+            this.show_value(control, this.confirmed_value(key, name)); // nothing sent: show the confirmed value
+        }
     }
 
     // One row: name, control, the slider's number (sliders only) and the description (IF-07: "shown next to the slider").
@@ -279,7 +361,8 @@ export class VariablesTab extends Tab {
         return readout;
     }
 
-    // E.8 "Bad variables_spec": skip that variable and write it to the log.
+    // ASSUMPTION (#78): the shared bus already drops a whole spec that fails the schema (that is a bug in
+    // the module, and the bus logs it), so E.8's "skip that variable" covers only what the schema can't check.
     private is_valid_variable(spec: unknown): spec is VariableSpec {
         if (typeof spec !== "object" || spec === null) return false;
         const s = spec as VariableSpec;
@@ -290,6 +373,7 @@ export class VariablesTab extends Tab {
         if (s.max !== null && typeof s.max !== "number") return false;
         if (s.step !== undefined && s.step !== null && typeof s.step !== "number") return false;
         if (s.choices !== null && !Array.isArray(s.choices)) return false;
+        if (s.choices !== null && !s.choices.includes(s.value as number | string)) return false; // not checked by the schema
         if (typeof s.is_live !== "boolean") return false;
         if (typeof s.description !== "string") return false;
         return true;
@@ -297,24 +381,23 @@ export class VariablesTab extends Tab {
 
     private on_spec(key: ConfigKey, msg: Message): void {
         if (!Array.isArray(msg.variables)) {
-            // TODO(#77): write to the app log once StartTab has it
+            // Console only: there is no app-wide log this tab can write to yet (E.8: "writes it to the log").
             console.error(`Invalid variables spec message for key ${key}: "variables" is not an array:`, msg);
             return;
         }
 
+        const valid_specs: VariableSpec[] = [];
         for (const spec of msg.variables) {
-            if (!this.is_valid_variable(spec)) {
-                // TODO(#77): write to the app log once StartTab has it
-                console.error(`Invalid variable spec for key ${key}:`, spec);
-                continue;
-            }
-
-            this.update(key, spec);
+            if (this.is_valid_variable(spec)) valid_specs.push(spec);
+            // Console only: there is no app-wide log this tab can write to yet (E.8: "writes it to the log").
+            else console.error(`Invalid variable spec for key ${key}:`, spec);
         }
-    }
 
-    private update(key: ConfigKey, spec: VariableSpec): void {
-        this.values.get(key)!.set(spec.name, spec.value);
-        this.render(key, spec);
+        const names = new Set(valid_specs.map((spec) => spec.name));
+        for (const name of [...this.specs.get(key)!.keys()]) {
+            if (!names.has(name)) this.remove_variable(key, name);
+        }
+        for (const spec of valid_specs) this.update(key, spec);
+        this.key_sections.get(key)!.hidden = valid_specs.length === 0;
     }
 }
