@@ -29,6 +29,7 @@ export class VariablesTab extends Tab {
     private key_sections: Map<ConfigKey, HTMLElement> = new Map();
     private slider_readouts: Map<ControlElement, HTMLSpanElement> = new Map(); // the number shown next to each slider
     private pending_timers: Map<ControlElement, number> = new Map(); // sent values waiting for the module to confirm them
+    private editing_elements: Set<ControlElement> = new Set(); // controls that the user is currently editing, so we don't overwrite them with a new value
 
     constructor(title: string, bus_client: BusClient) {
         super(title, bus_client);
@@ -47,8 +48,12 @@ export class VariablesTab extends Tab {
             this.create_variable_element(key, spec);
         }
 
-        this.set_element_value(key, spec.name, spec.value);
-        this.clear_pending(key_elements.get(spec.name)!);
+        const elem = key_elements.get(spec.name)!;
+        this.clear_pending(elem);
+        if (!this.editing_elements.has(elem)) {
+            this.set_element_value(key, spec.name, spec.value);
+        }
+
     }
 
     private apply(key: ConfigKey, name: string, value: VariableValue): void {
@@ -102,9 +107,7 @@ export class VariablesTab extends Tab {
     private create_switch(key: ConfigKey, spec: VariableSpec): HTMLInputElement {
         const element = document.createElement("input");
         element.type = "checkbox";
-        element.addEventListener("change", () => {
-            this.apply(key, spec.name, element.checked);
-        });
+        element.addEventListener("change", () => this.apply(key, spec.name, element.checked));
         return element;
     }
 
@@ -118,10 +121,7 @@ export class VariablesTab extends Tab {
                 element.appendChild(option);
             }
         }
-        element.addEventListener("change", () => {
-            this.apply(key, spec.name, spec.choices![element.selectedIndex]);
-        });
-
+        element.addEventListener("change", () => this.apply(key, spec.name, spec.choices![element.selectedIndex]));
         return element;
     }
 
@@ -131,10 +131,7 @@ export class VariablesTab extends Tab {
         element.min = String(spec.min);
         element.max = String(spec.max);
         element.step = spec.step?.toString() ?? DEFAULT_STEP.toString();
-        element.addEventListener("change", () => {
-            this.apply(key, spec.name, element.valueAsNumber);
-        });
-
+        element.addEventListener("change", () => this.apply(key, spec.name, element.valueAsNumber));
         return element;
     }
 
@@ -158,10 +155,7 @@ export class VariablesTab extends Tab {
     private create_text_input(key: ConfigKey, spec: VariableSpec): HTMLInputElement {
         const element = document.createElement("input");
         element.type = "text";
-        element.addEventListener("change", () => {
-            this.apply(key, spec.name, element.value);
-        });
-
+        element.addEventListener("change", () => this.apply(key, spec.name, element.value));
         return element;
     }
 
@@ -202,6 +196,14 @@ export class VariablesTab extends Tab {
         if (readout) readout.textContent = control.value;
     }
 
+    private end_editing(key: ConfigKey, name: string, control: ControlElement): void {
+        this.editing_elements.delete(control);
+        if (!this.pending_timers.has(control)) {
+            this.set_element_value(key, name, this.values.get(key)!.get(name)!); // nothing sent: show the confirmed value
+        }
+
+    }
+
     // One row: name, control, the slider's number (sliders only) and the description (IF-07: "shown next to the slider").
     private create_row(key: ConfigKey, spec: VariableSpec, control: ControlElement): HTMLElement {
         const row = document.createElement("div");
@@ -216,6 +218,10 @@ export class VariablesTab extends Tab {
         if (control instanceof HTMLInputElement && control.type === "range") {
             row.appendChild(this.create_slider_readout(control));
         }
+
+        control.addEventListener("input", () => this.editing_elements.add(control));
+        control.addEventListener("change", () => this.editing_elements.delete(control));
+        control.addEventListener("blur", () => this.end_editing(key, spec.name, control));
 
         const description = document.createElement("span");
         description.className = "variable-description";
