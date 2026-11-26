@@ -8,6 +8,9 @@ see shared/testing/runner.py for the helpers (check, load_json, play_fixture, ob
 """
 import json
 import math
+import os
+import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -16,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, for `import shared`
 
 from shared import topics as T  # noqa: E402
+from shared.interfaces import ValidationError, validate, validate_file  # noqa: E402
 from shared.testing import TestSuite  # noqa: E402
 
 suite = TestSuite(__file__)
@@ -34,6 +38,74 @@ MOVING_FIELDS = {
 }
 FIXTURE_AMPLITUDE = 20.0
 FIXTURE_PERIOD_S = 8.0
+
+
+def start_recorder(t, recording_folder: Path) -> subprocess.Popen:
+    """Start Recorder against the test broker and wait until it reports online."""
+    t.require_broker()
+    process = subprocess.Popen(
+        ["node", str(MODULE_DIR.parent / "node_modules" / "tsx" / "dist" / "cli.mjs"),
+         str(MODULE_DIR / "recorder.ts"), f"mqtt://{t.host}:{t.port}"],
+        cwd=recording_folder,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+    )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            output = process.stdout.read() if process.stdout else ""
+            raise AssertionError(f"Recorder exited during startup: {output}")
+        online = t.observe([T.sys_online("recorder")], 0.1)
+        if any(topic == T.sys_online("recorder") and msg is True for topic, msg, _ in online):
+            time.sleep(0.5)
+            return process
+    process.terminate()
+    output, _ = process.communicate(timeout=3)
+    raise AssertionError(f"Recorder did not come online: {output}")
+
+
+def stop_recorder(process: subprocess.Popen) -> str:
+    """Stop Recorder without leaving its MQTT client running after a test."""
+    if process.poll() is None:
+        if os.name == "nt":
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            process.terminate()
+    try:
+        output, _ = process.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        output, _ = process.communicate(timeout=3)
+    return output
+
+
+def wait_for_file(path: Path, timeout_s: float = 3) -> bool:
+    """Wait until Recorder has created a non-empty JSONL file."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if path.is_file() and path.stat().st_size > 0:
+            return True
+        time.sleep(0.05)
+    return path.is_file() and path.stat().st_size > 0
+
+
+def recording_rows(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def is_valid_recording(rows: list[dict]) -> bool:
+    if not rows:
+        return False
+    try:
+        validate_file("recording_header", rows[0])
+        for row in rows[1:]:
+            validate_file("recording_line", row)
+            validate(row["topic"], row["msg"])
+    except (ValidationError, KeyError, TypeError):
+        return False
+    return True
 
 
 def example_payload(topic: str) -> dict:
@@ -156,12 +228,83 @@ def e_t6(t):
 
 @suite.test("E-T7", "Recording", requirement="E-R5")
 def e_t7(t):
-    t.not_implemented()
+    with tempfile.TemporaryDirectory(prefix="ondos-e-t7-") as folder_name:
+        folder = Path(folder_name)
+        process = start_recorder(t, folder)
+        try:
+            t.play_fixture("input.jsonl", background=False)
+            first_file = folder / "recordings" / "20261123-210001.jsonl"
+            second_file = folder / "recordings" / "20261123-210002.jsonl"
+            files_ready = wait_for_file(first_file) and wait_for_file(second_file)
+            t.check("one file was created for each game", files_ready,
+                    f"files: {[p.name for p in (folder / 'recordings').glob('*.jsonl')]}")
+            if not files_ready:
+                return
+
+            first_rows = recording_rows(first_file)
+            second_rows = recording_rows(second_file)
+            valid_headers = all(
+                rows and rows[0].get("type") == "header" and rows[0].get("game_id") == game_id
+                for rows, game_id in ((first_rows, "20261123-210001"), (second_rows, "20261123-210002"))
+            )
+            headers_valid = all(is_valid_recording(rows) for rows in (first_rows, second_rows))
+            t.check("each file starts with a valid IF-09 header", valid_headers and headers_valid)
+            t.check("every recorded row matches the IF-09 and topic schemas", headers_valid)
+            maze_first = all(len(rows) > 1 and rows[1].get("topic") == T.VISION_MAZE
+                             for rows in (first_rows, second_rows))
+            t.check("retained maze data is present near the start of each file", maze_first)
+
+            size_before_app_close = second_file.stat().st_size
+            t.play_fixture("after_app_close.jsonl", background=False)
+            deadline = time.monotonic() + 3
+            grew = False
+            while time.monotonic() < deadline:
+                if second_file.stat().st_size > size_before_app_close:
+                    grew = True
+                    break
+                time.sleep(0.05)
+            t.check("recording keeps growing after the app disconnects", grew)
+        finally:
+            output = stop_recorder(process)
+            if any(not check.ok for check in t.checks):
+                print(output, end="")
 
 
 @suite.test("E-T8", "No replay in the recording", requirement="E-R5")
 def e_t8(t):
-    t.not_implemented()
+    with tempfile.TemporaryDirectory(prefix="ondos-e-t8-") as folder_name:
+        folder = Path(folder_name)
+        process = start_recorder(t, folder)
+        output = ""
+        try:
+            t.play_fixture("input.jsonl", background=False)
+            t.play_fixture("live.jsonl", background=False)
+            from shared.tools.replay import Replayer
+
+            replayer = Replayer(t.path("replay.jsonl"), 1, t.host, t.port)
+            replayer.run()
+            t.play_fixture("live.jsonl", background=False)
+            recording = folder / "recordings" / "20261123-210008.jsonl"
+            ready = wait_for_file(recording)
+            t.check("recording file was created", ready)
+            if not ready:
+                return
+            rows = recording_rows(recording)[1:]
+            replay_rows = [row for row in rows if isinstance(row.get("msg"), dict)
+                           and row["msg"].get("writer") == "replay"]
+            live_platform_rows = [row for row in rows if row.get("topic") == T.PLATFORM_STATE
+                              and isinstance(row.get("msg"), dict)
+                              and row["msg"].get("writer") == "bridge"]
+            t.check("replay-tagged messages are excluded", not replay_rows,
+                    f"found {len(replay_rows)} replay-tagged rows")
+            t.check("shared replay tool played its fixture", replayer.sent == 2,
+                    f"sent {replayer.sent}, skipped {replayer.skipped}")
+            t.check("live messages remain recorded", len(live_platform_rows) >= 2,
+                    f"recorded {len(live_platform_rows)} live platform rows")
+        finally:
+            output = stop_recorder(process)
+        if any(not check.ok for check in t.checks):
+            print(output, end="")
 
 
 @suite.test("E-T9", "Camera and 3D", requirement="E-R6")

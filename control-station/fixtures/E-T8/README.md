@@ -4,8 +4,8 @@ Requirement: E-R5
 
 **Method:** Replay a game during a live test game.
 
-**Pass if:** No replay message in the file; live messages are still recorded.
+**Pass if:** The shared replay tool plays the recorded Vision samples during the live game; no replay message appears in the recording, and live platform messages remain recorded.
 
 ## Inputs
 
-_To be added by the module team: the input files of this test and what the instructor can edit in them._
+`input.jsonl` starts a game. `live.jsonl` publishes a live platform sample before and after `replay.jsonl` is played through the shared replay tool. `replay.jsonl` contains two recorded Vision ball samples. The game ID and message values can be edited, but each message must remain valid for its topic schema.

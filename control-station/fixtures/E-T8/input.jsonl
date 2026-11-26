@@ -1,0 +1,4 @@
+{"t_s":0.0,"topic":"vision/maze","msg":{"maze_id":"demo","source":"file_checked","cell_size_mm":40,"rows":2,"cols":2,"origin_x_mm":-40,"origin_y_mm":-40,"walls":[[14,14],[9,3]],"wall_thickness_mm":4,"wall_height_mm":10,"start_cell":{"row":0,"col":0},"exit_cell":{"row":0,"col":1},"exit_x_mm":20,"exit_y_mm":-20,"exit_radius_mm":8,"ball_diameter_mm":12}}
+{"t_s":0.01,"topic":"plan/distance_map","msg":{"maze_id":"demo","rows":2,"cols":2,"steps":[[3,0],[2,1]]}}
+{"t_s":0.05,"topic":"game/state","msg":{"state":"ready","mode":"glove","game_id":"20261123-210008","maze_id":"demo","elapsed_s":0,"cell":null,"distance_to_exit_cells":null,"progress_pct":0,"result":"none"}}
+{"t_s":0.1,"topic":"game/state","msg":{"state":"playing","mode":"glove","game_id":"20261123-210008","maze_id":"demo","elapsed_s":0.1,"cell":{"row":0,"col":0},"distance_to_exit_cells":3,"progress_pct":0,"result":"none"}}
