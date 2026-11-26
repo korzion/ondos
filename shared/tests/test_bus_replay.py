@@ -144,6 +144,31 @@ def test_replay_skips_topic_whose_writer_is_online(broker, tmp_path):
     assert r.sent == 0 and r.skipped == 1
 
 
+def test_replayer_is_finished_when_the_file_ends(broker, tmp_path):
+    # listen starts a new replay only after the last one is finished; a file that ended on its own
+    # (no replay_stop) must count as finished too.
+    rec = tmp_path / "g.jsonl"
+    t0 = 1764849600.0
+    rows = [{"type": "header", "format_version": 1, "game_id": "20261204-140500", "maze_id": "demo", "mode": "ai",
+             "start_time_s": t0, "git_commit": None},
+            {"t_recv_s": t0, "topic": "vision/ball",
+             "msg": {"timestamp_s": t0, "seq": 0, "version": 1, "writer": "vision", **BALL}}]
+    rec.write_text("\n".join(json.dumps(r) for r in rows))
+    r = Replayer(rec, port=broker)
+    assert not r.is_finished()
+    r.run()
+    assert r.is_finished()
+
+
+def test_replayer_is_finished_when_the_file_is_not_a_recording(tmp_path):
+    rec = tmp_path / "g.jsonl"
+    rec.write_text(json.dumps({"t_recv_s": 0.0, "topic": "vision/ball", "msg": {}}))
+    r = Replayer(rec)
+    with pytest.raises(ValueError):
+        r.run()
+    assert r.is_finished()
+
+
 def test_unsubscribe_counts_and_stops_delivery(broker):
     got_a, got_b = [], []
     on_a = lambda t, m, r: got_a.append(m)
