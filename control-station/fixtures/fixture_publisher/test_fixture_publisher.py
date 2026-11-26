@@ -14,6 +14,8 @@ data/behaviour.json. No broker is needed. The content of the data files is check
 5. Keys        h stops the route and shows hand_present; c sends the new maze and its routes; an offline
                program publishes nothing; events.json presses keys at their time.
 6. Bad data    a missing file, a bad action and a game_manager topic stop the start with the file name.
+7. ball_seq    every sent route and tilt carries the seq of the ball message sent with it (IF-04): over more than
+               one loop, after a stall, and after vision was offline; without a ball message none is sent.
 """
 import json
 import shutil
@@ -26,6 +28,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2]))  # repo root, for `import shared`
 
+import fixture_publisher  # noqa: E402
 from engine import DataError, Engine  # noqa: E402
 from player import Player  # noqa: E402
 from shared import topics as T  # noqa: E402
@@ -260,3 +263,82 @@ def test_a_game_manager_topic_in_a_file_is_refused(data_copy):
         handle.write(json.dumps({"t_s": 0.5, "topic": T.GAME_STATE, "msg": state}) + "\n")
     with pytest.raises(DataError, match="game/state"):
         Engine(data_copy)
+
+
+# ---------------------------------------------------------------- 7 ball_seq
+PAIRED_TOPICS = (T.PLAN_ROUTE, T.CONTROL_TARGET_TILT)
+
+
+class FakeBus:
+    """Stands in for the broker connection: counts seq per topic like the bus helper and keeps what was sent."""
+
+    sent: list = []
+
+    def __init__(self, program, host, port):
+        self._seq = {}
+
+    def connect(self):
+        pass
+
+    def close(self):
+        pass
+
+    def is_connected(self):
+        return True
+
+    def publish(self, topic, fields):
+        seq = self._seq.get(topic, 100)  # not 0, so a sample number from the file cannot pass by chance
+        self._seq[topic] = seq + 1
+        msg = {"seq": seq, **fields}
+        FakeBus.sent.append((topic, msg))
+        return msg
+
+
+@pytest.fixture
+def publisher(engine, monkeypatch):
+    monkeypatch.setattr(fixture_publisher, "Bus", FakeBus)
+    monkeypatch.setattr(FakeBus, "sent", [])
+    return fixture_publisher.Publisher(engine, "unused", 0)
+
+
+def sent_in_one_tick(publisher, engine, now_s):
+    first = len(FakeBus.sent)
+    publisher._publish(engine.tick(now_s))
+    return FakeBus.sent[first:]
+
+
+def assert_paired(publisher, engine, start_s, seconds, step_s=TICK_S):
+    """In every tick the routes and tilts carry, in order, the seq of the ball messages of that tick."""
+    paired, now_s = dict.fromkeys(PAIRED_TOPICS, 0), start_s
+    while now_s <= start_s + seconds:
+        sent = sent_in_one_tick(publisher, engine, now_s)
+        ball_seqs = [msg["seq"] for topic, msg in sent if topic == T.VISION_BALL]
+        for topic in PAIRED_TOPICS:
+            ball_seqs_used = [msg["ball_seq"] for sent_topic, msg in sent if sent_topic == topic]
+            if ball_seqs_used:
+                assert ball_seqs_used == ball_seqs, (topic, now_s)
+                paired[topic] += len(ball_seqs_used)
+        now_s += step_s
+    return paired
+
+
+def test_ball_seq_follows_the_ball_messages_after_the_loop_starts_again(publisher, engine):
+    loop_s = json.loads((DATA / "behaviour.json").read_text(encoding="utf-8"))["loop_s"]
+    paired = assert_paired(publisher, engine, 0.0, 2 * loop_s + 1.0)
+    expected = EXPECTED_RATE_HZ[T.VISION_BALL] * (2 * loop_s + 1.0)
+    assert all(abs(count - expected) <= 2 for count in paired.values()), paired
+
+
+def test_ball_seq_stays_paired_when_several_samples_are_due_at_once(publisher, engine):
+    paired = assert_paired(publisher, engine, 0.0, 5.0, step_s=0.4)
+    assert min(paired.values()) > 100, paired
+
+
+def test_no_route_or_tilt_without_a_ball_and_paired_again_when_vision_is_back(publisher, engine):
+    assert_paired(publisher, engine, 0.0, 1.0)
+    engine.press("v", 1.0)
+    first = len(FakeBus.sent)
+    assert_paired(publisher, engine, 1.01, 40.0)  # longer than a loop: no old ball message is reused
+    assert not [topic for topic, _ in FakeBus.sent[first:] if topic in PAIRED_TOPICS]
+    engine.press("V", 41.1)
+    assert min(assert_paired(publisher, engine, 41.11, 1.0).values()) > 20
