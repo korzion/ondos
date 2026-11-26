@@ -4,6 +4,7 @@ Everything it plays is in data/ (written by make_fixture.py, or edited by hand).
 plays after which command or key; events.json (optional) presses keys at given times. The engine has no broker:
 tick() returns what to publish, publisher.py puts it on the bus.
 """
+import itertools
 import json
 from pathlib import Path
 
@@ -76,7 +77,8 @@ class Engine:
 
     def _publication(self, line: dict) -> Publication:
         topic = line["topic"]
-        return Publication(writer_of(topic), topic, {**line["msg"], **self._overrides.get(topic, {})})
+        fields = {**line["msg"], **self._overrides.get(topic, {})}
+        return Publication(writer_of(topic), topic, fields, line.get("ball_index"))
 
     def _fire_events(self, now_s: float) -> None:
         while self._events and self._events[0]["t_s"] <= now_s - self._start_s:
@@ -169,7 +171,13 @@ def _load_lines(data_dir: Path, name: str) -> list[dict]:
         program = writer_of(line["topic"])
         if program not in STAND_IN_PROGRAMS:
             raise DataError(f"{name}: {line['topic']} is written by {program}, which this publisher does not stand in for")
-    return lines
+    return _with_ball_indexes(lines)
+
+
+def _with_ball_indexes(lines: list[dict]) -> list[dict]:
+    """Number the vision/ball lines of a file from 0: ball_seq of a route or tilt line means this number."""
+    numbers = itertools.count()
+    return [{**line, "ball_index": next(numbers)} if line["topic"] == T.VISION_BALL else line for line in lines]
 
 
 def _all_action_lists(behaviour: dict) -> list[list[dict]]:
