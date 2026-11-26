@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, for `import shared`
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # this folder, also when Python runs in safe-path mode
 
 from pid_controller import PIDController  # noqa: E402
 from shared import topics as T  # noqa: E402
