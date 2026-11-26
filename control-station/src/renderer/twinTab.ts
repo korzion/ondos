@@ -88,8 +88,8 @@ export class TwinTab extends Tab {
     }
 
     private on_maze(msg: Message): void {
-        this.has_maze = true;
         this.viewport.set_maze(msg);
+        this.has_maze = true; // only once the maze is built
     }
 
     private receive(msg: unknown, t_recv_s: number): LatestMessage {
@@ -101,6 +101,8 @@ export class TwinTab extends Tab {
 
     private readonly draw_frame = (): void => {
         if (!this.is_tab_active()) return;
+        // The next frame is asked for first, so an error in this one does not stop the drawing.
+        this.frame_request = requestAnimationFrame(this.draw_frame);
         const now_s = nowS();
         this.measure_delay(now_s);
         const stale_topics = this.stale_topics(now_s);
@@ -109,7 +111,6 @@ export class TwinTab extends Tab {
         this.viewport.update(frame);
         this.count_frame(now_s);
         this.show_status(stale_topics, frame.ball_look);
-        this.frame_request = requestAnimationFrame(this.draw_frame);
     };
 
     // A topic is stale when it never came or came longer ago than its limit.
@@ -120,15 +121,16 @@ export class TwinTab extends Tab {
         return stale;
     }
 
+    // Without a maze there is no plate to put the ball and the AI points on, and the ball's size is not known.
     private build_frame(now_s: number, stale_topics: string[]): TwinFrame {
         const platform = this.platform?.msg;
         const is_ai_fresh = !is_older_than(this.ai_status, now_s, AI_STATUS_MAX_AGE_MS);
         return {
-            ball: this.ball?.msg ?? null,
+            ball: this.has_maze ? (this.ball?.msg ?? null) : null,
             ball_look: this.ball_look(stale_topics.includes(VISION_BALL)),
             tilt_x_deg: (platform?.tilt_x_deg as number | undefined) ?? 0,
             tilt_y_deg: (platform?.tilt_y_deg as number | undefined) ?? 0,
-            target_points_mm: is_ai_fresh ? (this.ai_status!.msg.target_points_mm as number[][]) : [],
+            target_points_mm: this.has_maze && is_ai_fresh ? (this.ai_status!.msg.target_points_mm as number[][]) : [],
         };
     }
 

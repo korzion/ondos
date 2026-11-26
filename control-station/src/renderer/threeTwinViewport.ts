@@ -11,8 +11,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 // How the ball is drawn. TwinTab chooses it from vision/ball and the message age.
 export type BallLook = "normal" | "predicted" | "lost" | "stale";
 
-// What one drawn frame shows. update(msg) of E.5 receives this: the latest messages, already
-// checked for age by TwinTab, so the viewport only draws.
+// What one drawn frame shows: the latest messages, already checked for age by TwinTab, so the
+// viewport only draws. ASSUMPTION: E.5 gives update(msg) without saying what msg is; here it is this.
 export interface TwinFrame {
     ball: Message | null; // latest vision/ball, or null before the first one
     ball_look: BallLook;
@@ -33,7 +33,7 @@ const STALE_BALL_COLOUR = 0xe5484d; // red is used only for "the ball data is st
 const TARGET_COLOUR = 0x3b82f6;
 const SIDE_LABEL_COLOUR = "#e6e8eb";
 
-// Ball looks, agreed on #82 (not in the design document): see-through while predicted, faint while lost.
+// ASSUMPTION: the document gives no ball looks. Here: see-through while predicted, faint while lost.
 const BALL_OPACITY: Record<BallLook, number> = { normal: 1, predicted: 0.45, lost: 0.15, stale: 1 };
 
 // Sizes that are not in vision/maze; they only change the picture (mechanical design v4).
@@ -111,9 +111,9 @@ export class ThreeTwinViewport {
     private readonly camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, CAMERA_NEAR_MM, CAMERA_FAR_MM);
     private readonly controls: OrbitControls;
     // board_frame turns the board frame (z up) into Three.js's frame (y up). Section A: a fixed outer
-    // frame, a middle frame turning about one axis and the plate turning about the other. The document
-    // does not say which axis is which; here the middle frame tilts front-back (tilt_y_deg) and carries
-    // the plate, which tilts left-right (tilt_x_deg).
+    // frame, a middle frame turning about one axis and the plate turning about the other.
+    // ASSUMPTION: the document does not say which axis is which; here the middle frame tilts
+    // front-back (tilt_y_deg) and carries the plate, which tilts left-right (tilt_x_deg).
     private readonly board_frame = new THREE.Group();
     private readonly middle_frame = new THREE.Group();
     private readonly plate = new THREE.Group();
@@ -130,7 +130,7 @@ export class ThreeTwinViewport {
     private view_size_mm = NO_MAZE_PLATE_MM;
     private readonly view_centre = new THREE.Vector3(); // the maze area's centre, in Three.js's frame
     private view_turn_rad = VIEW_TURNS_RAD[0];
-    private has_maze = false;
+    private maze_id: string | null = null; // of the maze on the plate; null before the first one
     private is_stale = false;
 
     constructor(private readonly container: HTMLElement) {
@@ -151,29 +151,32 @@ export class ThreeTwinViewport {
         this.reset_view();
     }
 
-    // Builds the plate, the walls and the exit of a new maze (vision/maze), replacing the old ones.
+    // Builds the plate, the walls and the exit of a maze (vision/maze), replacing the old ones.
     set_maze(msg: Message): void {
         const maze = msg as unknown as MazeGeometry;
-        this.clear_maze();
         const width_mm = maze.cols * maze.cell_size_mm;
         const depth_mm = maze.rows * maze.cell_size_mm;
-        this.add_plate(maze, width_mm, depth_mm);
-        for (const wall of maze_walls(maze, this.wall_materials)) this.maze_parts.add(wall);
-        this.maze_parts.add(this.create_exit_marker(msg));
+        // Every new part is made before the old maze is removed, so an error leaves the old maze whole.
+        const parts = [this.create_plate(maze, width_mm, depth_mm), ...maze_walls(maze, this.wall_materials), this.create_exit_marker(msg)];
+        this.clear_maze();
+        this.maze_parts.add(...parts);
         this.place_side_labels(maze, width_mm, depth_mm);
         this.ball.scale.setScalar((msg.ball_diameter_mm as number) / 2);
-        this.has_maze = true;
         this.view_size_mm = Math.max(width_mm, depth_mm) + 2 * (PLATE_MARGIN_MM + SIDE_LABEL_GAP_MM); // labels in view
         // The camera looks at the maze's centre: D4 puts the board origin there, but the view does not
         // rely on it (the tilt still turns about the board origin).
         this.view_centre.set(maze.origin_x_mm + width_mm / 2, maze.origin_y_mm + depth_mm / 2, 0).applyEuler(this.board_frame.rotation);
         this.view_turn_rad = view_turn_rad(maze);
-        this.reset_view();
+        // The retained maze comes again each time the tab opens; the user's view is kept for the same maze.
+        if (msg.maze_id !== this.maze_id) this.reset_view();
+        this.maze_id = msg.maze_id as string;
     }
 
     // Draws one frame. While stale the view stays frozen; only the ball's look changes (IF-02, IF-04).
     update(msg: TwinFrame): void {
         if (!this.is_stale) this.move(msg);
+        // IF-06: old AI points (an empty list from TwinTab) are hidden even while the view is frozen.
+        else if (msg.target_points_mm.length === 0) this.show_targets([]);
         this.show_ball_look(msg.ball_look);
         this.controls.update();
         this.renderer.render(this.scene, this.camera);
@@ -191,9 +194,8 @@ export class ThreeTwinViewport {
         // about +x (the middle frame). Then tilt_x_deg > 0 rolls the ball to +x, tilt_y_deg > 0 to +y.
         this.middle_frame.rotation.x = -THREE.MathUtils.degToRad(frame.tilt_y_deg);
         this.plate.rotation.y = THREE.MathUtils.degToRad(frame.tilt_x_deg);
-        // Without a maze there is no plate to put them on, and the ball's size is not known yet.
-        this.move_ball(this.has_maze ? frame.ball : null);
-        this.show_targets(this.has_maze ? frame.target_points_mm : []);
+        this.move_ball(frame.ball);
+        this.show_targets(frame.target_points_mm);
     }
 
     private move_ball(ball: Message | null): void {
@@ -331,13 +333,13 @@ export class ThreeTwinViewport {
         }
     }
 
-    private add_plate(maze: MazeGeometry, width_mm: number, depth_mm: number): void {
+    private create_plate(maze: MazeGeometry, width_mm: number, depth_mm: number): THREE.Mesh {
         const geometry = new THREE.BoxGeometry(width_mm + 2 * PLATE_MARGIN_MM, depth_mm + 2 * PLATE_MARGIN_MM, PLATE_THICKNESS_MM);
         const plate = new THREE.Mesh(geometry, this.plate_material);
         // Top face at z = 0, centred on the maze area.
         plate.position.set(maze.origin_x_mm + width_mm / 2, maze.origin_y_mm + depth_mm / 2, -PLATE_THICKNESS_MM / 2);
         plate.receiveShadow = true;
-        this.maze_parts.add(plate);
+        return plate;
     }
 
     // IF-04 gives the exit marker as a centre and a radius (exit_radius_mm), so it is drawn as a disc.
@@ -349,10 +351,10 @@ export class ThreeTwinViewport {
         return marker;
     }
 
-    // "+x", "-x", "+y" and "-y" (with a real minus sign) beside the four plate edges, so every side
-    // is named from any view and a tilt can be read off directly (D4: tilt_x_deg > 0 lowers the +x
-    // side). They are children of the plate, so they tilt with it. Made once; each maze only moves
-    // them. Hidden until the first maze.
+    // ASSUMPTION: not in the document. "+x", "-x", "+y" and "-y" (with a real minus sign) beside the
+    // four plate edges, so every side is named from any view and a tilt can be read off directly (D4:
+    // tilt_x_deg > 0 lowers the +x side). They are children of the plate, so they tilt with it. Made
+    // once; each maze only moves them. Hidden until the first maze.
     private create_side_labels(): THREE.Group {
         const labels = new THREE.Group();
         for (const name of SIDE_LABEL_NAMES) {
@@ -382,8 +384,8 @@ export class ThreeTwinViewport {
 
 // ------------------------------------------------------------------ first view
 
-// The side of the plate the camera starts at: the one where the exit is far and the start cell near
-// (agreed on #82). Without a start cell the plate's centre stands in for it.
+// ASSUMPTION: not in the document. The side of the plate the camera starts at: the one where the
+// exit is far and the start cell near. Without a start cell the plate's centre stands in for it.
 function view_turn_rad(maze: MazeGeometry): number {
     const [start_x_mm, start_y_mm] = maze.start_cell === null
         ? [maze.origin_x_mm + maze.cols * maze.cell_size_mm / 2, maze.origin_y_mm + maze.rows * maze.cell_size_mm / 2]
@@ -469,8 +471,9 @@ function wall_centre_mm(maze: MazeGeometry, row: number, col: number, side: Wall
     return [centre_x_mm + offset_x_mm, centre_y_mm + offset_y_mm];
 }
 
-// IF-04: "Only the shared helper (shared/mazes/) computes it." That helper (MazeGrid.cell_centre_mm)
-// is Python only; this is the same formula in TypeScript. Open question on #82, to add it to shared/.
+// ASSUMPTION: IF-04 says "Only the shared helper (shared/mazes/) computes it", but that helper
+// (MazeGrid.cell_centre_mm) is Python only. This is the same formula in TypeScript until shared/
+// has a TypeScript helper (a separate issue).
 function cell_centre_mm(maze: MazeGeometry, row: number, col: number): [number, number] {
     return [
         maze.origin_x_mm + (col + CELL_CENTRE_OFFSET_CELLS) * maze.cell_size_mm,
