@@ -31,7 +31,7 @@ const EXIT_COLOUR = 0x2ea043;
 const BALL_COLOUR = 0xb9c0c8;
 const STALE_BALL_COLOUR = 0xe5484d; // red is used only for "the ball data is stale"
 const TARGET_COLOUR = 0x3b82f6;
-const AXIS_COLOUR = 0xe6e8eb;
+const SIDE_LABEL_COLOUR = "#e6e8eb";
 
 // Ball looks, agreed on #82 (not in the design document): see-through while predicted, faint while lost.
 const BALL_OPACITY: Record<BallLook, number> = { normal: 1, predicted: 0.45, lost: 0.15, stale: 1 };
@@ -44,9 +44,7 @@ const OUTER_WALL_DEPTH_OFFSET = -1; // see create_wall_materials
 const CELL_CENTRE_OFFSET_CELLS = 0.5; // a cell centre is half a cell from the cell's origin corner (IF-04)
 const EXIT_MARKER_HEIGHT_MM = 0.3; // just above the plate, so it is not hidden by it
 const TARGET_RADIUS_MM = 2.5;
-const AXIS_LENGTH_MM = 30;
-const AXIS_HEAD_MM = 6;
-const AXIS_HEAD_WIDTH_MM = 3;
+const SIDE_LABEL_GAP_MM = 20; // outside the plate edge; far enough that no label covers the plate from any side
 
 // Camera: straight in front of one side of the plate and above it, so the tilt is easy to see.
 const CAMERA_FOV_DEG = 40;
@@ -84,7 +82,9 @@ const MAX_TARGETS = 3; // ai/status: up to 3 points
 const POINT_COMPONENTS = 3; // x, y, z of one line point
 const WALL_KEY_DECIMALS = 1; // walls closer than 0.1 mm are the same wall
 const BUTTON_MARGIN = "8px";
-const LABEL_FONT_SIZE = "12px";
+const SIDE_LABEL_FONT_SIZE = "13px";
+
+const SIDE_LABEL_NAMES = ["+x", "\u2212x", "+y", "\u2212y"]; // "\u2212" is the minus sign
 
 const WALL_BITS: ReadonlyArray<{ side: WallSide; bit: number }> = [
     { side: "n", bit: 1 }, { side: "e", bit: 2 }, { side: "s", bit: 4 }, { side: "w", bit: 8 },
@@ -118,7 +118,7 @@ export class ThreeTwinViewport {
     private readonly middle_frame = new THREE.Group();
     private readonly plate = new THREE.Group();
     private readonly maze_parts = new THREE.Group();
-    private readonly axes: THREE.Group;
+    private readonly side_labels: THREE.Group;
     // One material per kind of part, shared by every maze, so a maze change only frees geometry.
     private readonly plate_material = new THREE.MeshStandardMaterial({ color: PLATE_COLOUR, roughness: PLATE_ROUGHNESS });
     private readonly exit_material = new THREE.MeshStandardMaterial({ color: EXIT_COLOUR });
@@ -144,7 +144,7 @@ export class ThreeTwinViewport {
         this.ball.visible = false;
         this.targets = this.create_targets();
         this.target_line = this.create_target_line();
-        this.axes = this.create_axes();
+        this.side_labels = this.create_side_labels();
         this.build_scene();
         this.add_reset_button();
         new ResizeObserver(() => this.fit_to_container()).observe(container);
@@ -160,10 +160,10 @@ export class ThreeTwinViewport {
         this.add_plate(maze, width_mm, depth_mm);
         for (const wall of maze_walls(maze, this.wall_materials)) this.maze_parts.add(wall);
         this.maze_parts.add(this.create_exit_marker(msg));
-        this.place_axes(maze);
+        this.place_side_labels(maze, width_mm, depth_mm);
         this.ball.scale.setScalar((msg.ball_diameter_mm as number) / 2);
         this.has_maze = true;
-        this.view_size_mm = Math.max(width_mm, depth_mm) + 2 * PLATE_MARGIN_MM;
+        this.view_size_mm = Math.max(width_mm, depth_mm) + 2 * (PLATE_MARGIN_MM + SIDE_LABEL_GAP_MM); // labels in view
         // The camera looks at the maze's centre: D4 puts the board origin there, but the view does not
         // rely on it (the tilt still turns about the board origin).
         this.view_centre.set(maze.origin_x_mm + width_mm / 2, maze.origin_y_mm + depth_mm / 2, 0).applyEuler(this.board_frame.rotation);
@@ -258,7 +258,7 @@ export class ThreeTwinViewport {
         this.scene.add(this.board_frame);
         this.board_frame.add(this.middle_frame);
         this.middle_frame.add(this.plate);
-        this.plate.add(this.maze_parts, this.axes, this.ball, this.targets, this.target_line);
+        this.plate.add(this.maze_parts, this.side_labels, this.ball, this.targets, this.target_line);
     }
 
     // Light from the side, so the plate's shade changes with the tilt and the ball casts a shadow.
@@ -349,28 +349,34 @@ export class ThreeTwinViewport {
         return marker;
     }
 
-    // White "+x" and "+y" arrows, so the directions are clear from any view. Made once; each maze
-    // only moves them (place_axes). Hidden until the first maze.
-    private create_axes(): THREE.Group {
-        const axes = new THREE.Group();
-        for (const [name, direction] of [["+x", new THREE.Vector3(1, 0, 0)], ["+y", new THREE.Vector3(0, 1, 0)]] as const) {
-            const arrow = new THREE.ArrowHelper(direction, new THREE.Vector3(), AXIS_LENGTH_MM, AXIS_COLOUR, AXIS_HEAD_MM, AXIS_HEAD_WIDTH_MM);
-            const label = document.createElement("span");
-            label.textContent = name;
-            Object.assign(label.style, { color: `#${AXIS_COLOUR.toString(16)}`, fontSize: LABEL_FONT_SIZE });
-            const label_object = new CSS2DObject(label);
-            label_object.position.set(0, AXIS_LENGTH_MM + AXIS_HEAD_MM, 0); // an ArrowHelper points along its own +y
-            arrow.add(label_object);
-            axes.add(arrow);
+    // "+x", "-x", "+y" and "-y" (with a real minus sign) beside the four plate edges, so every side
+    // is named from any view and a tilt can be read off directly (D4: tilt_x_deg > 0 lowers the +x
+    // side). They are children of the plate, so they tilt with it. Made once; each maze only moves
+    // them. Hidden until the first maze.
+    private create_side_labels(): THREE.Group {
+        const labels = new THREE.Group();
+        for (const name of SIDE_LABEL_NAMES) {
+            const text = document.createElement("span");
+            text.textContent = name;
+            Object.assign(text.style, { color: SIDE_LABEL_COLOUR, fontSize: SIDE_LABEL_FONT_SIZE });
+            labels.add(new CSS2DObject(text));
         }
-        axes.visible = false;
-        return axes;
+        labels.visible = false;
+        return labels;
     }
 
-    // At the front-left corner, on top of the outer wall, so the wall does not hide them.
-    private place_axes(maze: MazeGeometry): void {
-        this.axes.position.set(maze.origin_x_mm - PLATE_MARGIN_MM, maze.origin_y_mm - PLATE_MARGIN_MM, maze.wall_height_mm);
-        this.axes.visible = true;
+    // Each label at the middle of its edge, just outside the plate.
+    private place_side_labels(maze: MazeGeometry, width_mm: number, depth_mm: number): void {
+        const centre_x_mm = maze.origin_x_mm + width_mm / 2;
+        const centre_y_mm = maze.origin_y_mm + depth_mm / 2;
+        const half_width_mm = width_mm / 2 + PLATE_MARGIN_MM + SIDE_LABEL_GAP_MM;
+        const half_depth_mm = depth_mm / 2 + PLATE_MARGIN_MM + SIDE_LABEL_GAP_MM;
+        const positions_mm = [
+            [centre_x_mm + half_width_mm, centre_y_mm], [centre_x_mm - half_width_mm, centre_y_mm],
+            [centre_x_mm, centre_y_mm + half_depth_mm], [centre_x_mm, centre_y_mm - half_depth_mm],
+        ]; // same order as SIDE_LABEL_NAMES
+        this.side_labels.children.forEach((label, i) => label.position.set(positions_mm[i][0], positions_mm[i][1], 0));
+        this.side_labels.visible = true;
     }
 }
 
