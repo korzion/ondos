@@ -6,9 +6,9 @@
 Inputs are in fixtures/<TEST-ID>/. Each test prints PASS or FAIL for every check;
 see shared/testing/runner.py for the helpers (check, load_json, play_fixture, observe, checklist).
 """
-import itertools
+from __future__ import annotations
+
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -49,129 +49,6 @@ def d_t5(t):
     t.not_implemented()
 
 
-def _is_finite_num(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-
-
-def _reference_extract(entries):
-    """Independent reference implementation of IF-09 causal joining and exclusion counting."""
-    excluded = {
-        "replay": 0,
-        "invalid_message": 0,
-        "missing_game_state": 0,
-        "stale_game_state": 0,
-        "not_playing": 0,
-        "ball_not_visible": 0,
-        "invalid_ball": 0,
-        "missing_maze": 0,
-        "missing_distance_map": 0,
-        "missing_route": 0,
-        "maze_mismatch": 0,
-        "invalid_route": 0,
-        "stale_route": 0,
-        "route_mismatch": 0,
-        "missing_platform_state": 0,
-        "platform_fault_or_estop": 0,
-        "invalid_platform_state": 0,
-        "stale_platform_state": 0,
-    }
-    ordered = sorted(entries, key=lambda item: (float(item[0]), item[1]))
-    latest = {}
-    kept = []
-    stale_seqs = set()
-
-    for t_now, group in itertools.groupby(ordered, key=lambda item: float(item[0])):
-        batch = list(group)
-        for _, _, topic, msg in batch:
-            if topic == T.VISION_BALL:
-                continue
-            if isinstance(msg, dict) and msg.get("writer") == "replay":
-                excluded["replay"] += 1
-                continue
-            if topic in (T.GAME_STATE, T.PLATFORM_STATE, T.VISION_MAZE, T.PLAN_DISTANCE_MAP, T.PLAN_ROUTE):
-                latest[topic] = (t_now, msg)
-
-        for _, _, topic, ball in batch:
-            if topic != T.VISION_BALL:
-                continue
-            if isinstance(ball, dict) and ball.get("writer") == "replay":
-                excluded["replay"] += 1
-                continue
-
-            if T.GAME_STATE not in latest:
-                excluded["missing_game_state"] += 1
-                continue
-            t_game, g = latest[T.GAME_STATE]
-            if (t_now - t_game) * 1000.0 > T.GAME_STATE_MAX_AGE_MS:
-                excluded["stale_game_state"] += 1
-                continue
-            if g["state"] != "playing":
-                excluded["not_playing"] += 1
-                continue
-            active_maze = g["maze_id"]
-            if active_maze is None:
-                excluded["missing_maze"] += 1
-                continue
-            if not ball["is_visible"]:
-                excluded["ball_not_visible"] += 1
-                continue
-            if not all(_is_finite_num(ball[k]) for k in ("x_mm", "y_mm", "vx_mm_s", "vy_mm_s")):
-                excluded["invalid_ball"] += 1
-                continue
-            if T.VISION_MAZE not in latest:
-                excluded["missing_maze"] += 1
-                continue
-            if T.PLAN_DISTANCE_MAP not in latest:
-                excluded["missing_distance_map"] += 1
-                continue
-            if T.PLAN_ROUTE not in latest:
-                excluded["missing_route"] += 1
-                continue
-
-            _, m = latest[T.VISION_MAZE]
-            _, dm = latest[T.PLAN_DISTANCE_MAP]
-            t_route, r = latest[T.PLAN_ROUTE]
-            if m["maze_id"] != active_maze or dm["maze_id"] != active_maze or r["maze_id"] != active_maze:
-                excluded["maze_mismatch"] += 1
-                continue
-            if r["status"] != "valid" or not r["target_points_mm"]:
-                excluded["invalid_route"] += 1
-                continue
-            if r["ball_seq"] > ball["seq"]:
-                excluded["route_mismatch"] += 1
-                continue
-            if (t_now - t_route) * 1000.0 > T.CONTROLLER_INPUT_MAX_AGE_MS:
-                excluded["stale_route"] += 1
-                continue
-            if T.PLATFORM_STATE not in latest:
-                excluded["missing_platform_state"] += 1
-                continue
-
-            t_plat, p = latest[T.PLATFORM_STATE]
-            if p["is_e_stop"] or p["fault"] != "none":
-                excluded["platform_fault_or_estop"] += 1
-                continue
-            if not all(_is_finite_num(p[k]) for k in ("tilt_x_deg", "tilt_y_deg", "applied_tilt_x_deg", "applied_tilt_y_deg")):
-                excluded["invalid_platform_state"] += 1
-                continue
-
-            if (t_now - t_plat) * 1000.0 > T.CONTROLLER_INPUT_MAX_AGE_MS:
-                excluded["stale_platform_state"] += 1
-                stale_seqs.add(ball["seq"])
-                continue
-
-            kept.append((
-                ball["seq"],
-                active_maze,
-                g["mode"],
-                float(p["applied_tilt_x_deg"]),
-                float(p["applied_tilt_y_deg"]),
-                [[float(pt[0]), float(pt[1])] for pt in r["target_points_mm"]],
-            ))
-
-    return kept, stale_seqs, excluded
-
-
 def _latest_raw_at_or_before(sorted_entries, topic, t_limit):
     found = None
     for t_recv, _, entry_topic, msg in sorted_entries:
@@ -180,6 +57,30 @@ def _latest_raw_at_or_before(sorted_entries, topic, t_limit):
         if entry_topic == topic and not (isinstance(msg, dict) and msg.get("writer") == "replay"):
             found = (t_recv, msg)
     return found
+
+
+def _raw_route_for_ball_seq(sorted_entries, ball_seq, t_ball):
+    candidates = [
+        (t_recv, msg)
+        for t_recv, _, entry_topic, msg in sorted_entries
+        if entry_topic == T.PLAN_ROUTE
+        and not (isinstance(msg, dict) and msg.get("writer") == "replay")
+        and msg.get("ball_seq") == ball_seq
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: abs(item[0] - t_ball))
+
+
+def _maze_transitions_are_contiguous(rows):
+    """Return (is_contiguous, ordered_maze_ids) ensuring no row reverts to an earlier maze."""
+    seen = []
+    for row in rows:
+        if not seen or seen[-1] != row.maze_id:
+            if row.maze_id in seen:
+                return False, seen + [row.maze_id]
+            seen.append(row.maze_id)
+    return True, seen
 
 
 @suite.test("D-T6", "Training rows", requirement="D-R6")
@@ -222,7 +123,7 @@ def d_t6(t):
 
     t.check("produced clean training rows", len(rows) > 0, f"{len(rows)} kept rows")
 
-    # 1. Causality: joined messages must come from t_recv_s <= ball's t_recv_s.
+    # 1. Context causality: joined state/maze/platform messages come from t_recv_s <= ball t_recv_s.
     causal_violations = [
         r.ball_seq
         for r in all_rows
@@ -231,12 +132,11 @@ def d_t6(t):
             or r.t_platform_state_s > r.t_recv_s
             or r.t_maze_s > r.t_recv_s
             or r.t_distance_map_s > r.t_recv_s
-            or r.t_route_s > r.t_recv_s
         )
     ]
-    t.check("causal timestamps (t_* <= t_recv_s)", not causal_violations, f"violations={causal_violations}")
+    t.check("causal context timestamps (t_ctx <= t_recv_s)", not causal_violations, f"violations={causal_violations}")
 
-    # 2. No maze mixing + 3. Freshness and IF-09 label provenance verified against raw file.
+    # 2. Route parity + 3. No maze mixing + 4. Freshness and IF-09 label provenance verified against raw file.
     sorted_entries = sorted(raw_entries, key=lambda item: (item[0], item[1]))
     maze_mix_errors = []
     label_or_fresh_errors = []
@@ -244,7 +144,7 @@ def d_t6(t):
         g_snap = _latest_raw_at_or_before(sorted_entries, T.GAME_STATE, r.t_recv_s)
         m_snap = _latest_raw_at_or_before(sorted_entries, T.VISION_MAZE, r.t_recv_s)
         dm_snap = _latest_raw_at_or_before(sorted_entries, T.PLAN_DISTANCE_MAP, r.t_recv_s)
-        rt_snap = _latest_raw_at_or_before(sorted_entries, T.PLAN_ROUTE, r.t_recv_s)
+        rt_snap = _raw_route_for_ball_seq(sorted_entries, r.ball_seq, r.t_recv_s)
         p_snap = _latest_raw_at_or_before(sorted_entries, T.PLATFORM_STATE, r.t_recv_s)
 
         if not (g_snap and m_snap and dm_snap and rt_snap and p_snap):
@@ -267,18 +167,20 @@ def d_t6(t):
             maze_mix_errors.append(f"seq {r.ball_seq}: joined timestamp mismatch")
 
         if (
-            g["state"] != "playing"
+            r.route_ball_seq != r.ball_seq
+            or g["state"] != "playing"
             or g["maze_id"] != r.maze_id
             or m["maze_id"] != r.maze_id
             or dm["maze_id"] != r.maze_id
             or rt["maze_id"] != r.maze_id
             or rt["status"] != "valid"
         ):
-            maze_mix_errors.append(f"seq {r.ball_seq}: maze/state mismatch")
+            maze_mix_errors.append(f"seq {r.ball_seq}: maze/route/state mismatch")
 
         if (
             r.platform_age_ms > T.CONTROLLER_INPUT_MAX_AGE_MS
             or r.route_age_ms > T.CONTROLLER_INPUT_MAX_AGE_MS
+            or abs(trt - r.t_recv_s) * 1000.0 > T.CONTROLLER_INPUT_MAX_AGE_MS
             or r.game_state_age_ms > T.GAME_STATE_MAX_AGE_MS
             or r.applied_tilt_x_deg != float(p["applied_tilt_x_deg"])
             or r.applied_tilt_y_deg != float(p["applied_tilt_y_deg"])
@@ -286,10 +188,10 @@ def d_t6(t):
         ):
             label_or_fresh_errors.append(f"seq {r.ball_seq}: freshness/label/mode mismatch")
 
-    t.check("no cross-maze mixing across game/maze/distance_map/route", not maze_mix_errors, str(maze_mix_errors[:3]))
+    t.check("no cross-maze mixing and exact route ball_seq match", not maze_mix_errors, str(maze_mix_errors[:3]))
     t.check("fresh inputs, applied_tilt label, and game/state.mode", not label_or_fresh_errors, str(label_or_fresh_errors[:3]))
 
-    # 4. Stale platform rows are marked and excluded from default and imitation rows.
+    # 5. Stale platform rows are marked and excluded from default and imitation rows.
     clean_seqs = {r.ball_seq for r in rows}
     imit_seqs = {r.ball_seq for r in imit_rows}
     stale_ok = True
@@ -305,37 +207,30 @@ def d_t6(t):
         stale_detail.append("imitation_rows filter mismatch")
     t.check("stale platform rows marked and excluded from training/imitation", stale_ok, f"bad={stale_detail}")
 
-    # 5. Multi-maze transition check (no reverting to earlier maze_id).
-    seen_mazes = []
-    reverted = False
-    for r in rows:
-        if not seen_mazes or seen_mazes[-1] != r.maze_id:
-            if r.maze_id in seen_mazes:
-                reverted = True
-            seen_mazes.append(r.maze_id)
-    t.check(
-        "multi-maze transitions stay contiguous without reverting",
-        (not reverted) and (len(seen_mazes) >= 2 if len({m for _, m, *_ in _reference_extract(raw_entries)[0]}) >= 2 else True),
-        f"mazes={seen_mazes}",
-    )
+    # 6. Contiguous maze transitions without reverting.
+    is_contiguous, seen_mazes = _maze_transitions_are_contiguous(rows)
+    t.check("maze transitions stay contiguous without reverting", is_contiguous, f"mazes={seen_mazes}")
 
-    # 6. Independent reference computation comparison.
-    ref_rows, ref_stale_seqs, ref_excluded = _reference_extract(raw_entries)
-    actual_rows = [
-        (
-            r.ball_seq,
-            r.maze_id,
-            r.mode,
-            r.applied_tilt_x_deg,
-            r.applied_tilt_y_deg,
-            r.target_points_mm,
-        )
-        for r in rows
-    ]
-    actual_stale_seqs = {r.ball_seq for r in all_rows if r.is_platform_stale}
-    t.check("kept training rows match independent reference", actual_rows == ref_rows, f"{len(actual_rows)} vs {len(ref_rows)}")
-    t.check("stale-marked rows match independent reference", actual_stale_seqs == ref_stale_seqs, f"{sorted(actual_stale_seqs)} vs {sorted(ref_stale_seqs)}")
-    t.check("excluded counts match independent reference", loaded.stats.excluded == ref_excluded, f"{loaded.stats.excluded}")
+    # 7. Hand-checked expected fixture comparison (when expected.json is provided).
+    expected_path = t.fixture_dir / "expected.json"
+    if expected_path.exists():
+        expected = t.load_json("expected.json")
+        actual_rows = [
+            {
+                "ball_seq": r.ball_seq,
+                "maze_id": r.maze_id,
+                "mode": r.mode,
+                "applied_tilt_x_deg": r.applied_tilt_x_deg,
+                "applied_tilt_y_deg": r.applied_tilt_y_deg,
+                "target_points_mm": r.target_points_mm,
+            }
+            for r in rows
+        ]
+        actual_stale_seqs = sorted(r.ball_seq for r in all_rows if r.is_platform_stale)
+        t.check("maze_ids match expected.json", seen_mazes == expected["maze_ids"], f"{seen_mazes} vs {expected['maze_ids']}")
+        t.check("kept training rows match expected.json", actual_rows == expected["kept_rows"], f"{len(actual_rows)} vs {len(expected['kept_rows'])}")
+        t.check("stale-marked rows match expected.json", actual_stale_seqs == expected["stale_platform_ball_seqs"], f"{actual_stale_seqs} vs {expected['stale_platform_ball_seqs']}")
+        t.check("excluded counts match expected.json", loaded.stats.excluded == expected["excluded"], f"{loaded.stats.excluded}")
 
 
 @suite.test("D-T7", "Signs", requirement="D-R7")

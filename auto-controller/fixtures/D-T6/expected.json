@@ -1,0 +1,74 @@
+{
+  "maze_ids": ["maze-a", "maze-b"],
+  "kept_rows": [
+    {
+      "ball_seq": 10,
+      "maze_id": "maze-a",
+      "mode": "glove",
+      "applied_tilt_x_deg": 1.8,
+      "applied_tilt_y_deg": 2.2,
+      "target_points_mm": [[-20.0, 20.0], [20.0, 20.0], [20.0, -20.0]]
+    },
+    {
+      "ball_seq": 11,
+      "maze_id": "maze-a",
+      "mode": "glove",
+      "applied_tilt_x_deg": 0.5,
+      "applied_tilt_y_deg": 3.5,
+      "target_points_mm": [[-20.0, 20.0], [20.0, 20.0], [20.0, -20.0]]
+    },
+    {
+      "ball_seq": 14,
+      "maze_id": "maze-a",
+      "mode": "glove",
+      "applied_tilt_x_deg": 3.0,
+      "applied_tilt_y_deg": 0.0,
+      "target_points_mm": [[20.0, 20.0], [20.0, -20.0]]
+    },
+    {
+      "ball_seq": 32,
+      "maze_id": "maze-b",
+      "mode": "glove",
+      "applied_tilt_x_deg": 0.0,
+      "applied_tilt_y_deg": -3.0,
+      "target_points_mm": [[-20.0, -20.0], [20.0, -20.0]]
+    },
+    {
+      "ball_seq": 33,
+      "maze_id": "maze-b",
+      "mode": "glove",
+      "applied_tilt_x_deg": 4.0,
+      "applied_tilt_y_deg": 0.0,
+      "target_points_mm": [[20.0, -20.0]]
+    },
+    {
+      "ball_seq": 34,
+      "maze_id": "maze-b",
+      "mode": "glove",
+      "applied_tilt_x_deg": 1.2,
+      "applied_tilt_y_deg": 0.0,
+      "target_points_mm": [[20.0, -20.0]]
+    }
+  ],
+  "stale_platform_ball_seqs": [15],
+  "excluded": {
+    "replay": 1,
+    "invalid_message": 0,
+    "missing_game_state": 0,
+    "stale_game_state": 0,
+    "not_playing": 3,
+    "ball_not_visible": 1,
+    "invalid_ball": 0,
+    "missing_maze": 0,
+    "missing_distance_map": 0,
+    "missing_route": 0,
+    "maze_mismatch": 1,
+    "invalid_route": 1,
+    "stale_route": 0,
+    "route_mismatch": 1,
+    "missing_platform_state": 0,
+    "platform_fault_or_estop": 0,
+    "invalid_platform_state": 0,
+    "stale_platform_state": 1
+  }
+}

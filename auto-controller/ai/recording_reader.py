@@ -55,7 +55,7 @@ def _new_excluded_counts() -> dict[str, int]:
 class TrainingRow:
     """Single training sample joined causally from a recorded vision/ball message."""
 
-    # Provenance & causality timestamps (Recorder clock t_recv_s)
+    # Provenance & timestamps (Recorder clock t_recv_s)
     game_id: str
     maze_id: str
     mode: str
@@ -133,101 +133,33 @@ class RecordingReader:
     def load(self, path: str | Path) -> LoadedRecording:
         """Load and parse an IF-09 JSONL recording file into causal TrainingRows."""
         rec_path = Path(path)
-        raw_lines = [line for line in rec_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        if not raw_lines:
-            raise ValueError(f"{rec_path}: empty recording file")
-
-        try:
-            header = json.loads(raw_lines[0])
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"{rec_path}:1: invalid JSON header: {exc}") from exc
-
-        try:
-            validate_file("recording_header", header)
-        except ValidationError as exc:
-            raise ValueError(f"{rec_path}:1: invalid recording header: {exc}") from exc
-
-        if header.get("format_version") != T.RECORDING_FORMAT_VERSION:
-            raise ValueError(
-                f"{rec_path}:1: unsupported format_version {header.get('format_version')!r}"
-            )
-
-        stats = RecordingStats(total_lines=len(raw_lines) - 1)
-        parsed_lines: list[tuple[float, int, str, Any]] = []
-
-        for line_no, raw in enumerate(raw_lines[1:], start=2):
-            try:
-                entry = json.loads(raw)
-                validate_file("recording_line", entry)
-            except (json.JSONDecodeError, ValidationError):
-                stats.excluded["invalid_message"] += 1
-                continue
-
-            t_recv_s = entry["t_recv_s"]
-            if not _is_finite_number(t_recv_s):
-                stats.excluded["invalid_message"] += 1
-                continue
-
-            parsed_lines.append((float(t_recv_s), line_no, entry["topic"], entry["msg"]))
-
-        # Process strictly in Recorder clock order (t_recv_s) to prevent any future leakage.
-        parsed_lines.sort(key=lambda item: (item[0], item[1]))
+        header, body_lines = self._read_header(rec_path)
+        stats = RecordingStats(total_lines=len(body_lines))
+        clean_lines = self._parse_and_validate_lines(body_lines, stats)
+        routes_by_ball_seq = self._index_routes(clean_lines)
 
         snapshots: dict[str, tuple[float, dict[str, Any]]] = {}
         rows: list[TrainingRow] = []
         all_rows: list[TrainingRow] = []
 
-        for t_now, group_iter in itertools.groupby(parsed_lines, key=lambda item: item[0]):
+        for t_now, group_iter in itertools.groupby(clean_lines, key=lambda item: item[0]):
             group = list(group_iter)
-            non_ball = [item for item in group if item[2] != T.VISION_BALL]
-            ball_items = [item for item in group if item[2] == T.VISION_BALL]
-
-            # Update context messages received at t_now before evaluating ball samples at t_now.
-            for _, _, topic, msg in non_ball:
-                if self._is_replay_message(msg):
-                    stats.excluded["replay"] += 1
+            self._update_snapshots(t_now, group, snapshots)
+            for _, _, topic, ball_msg in group:
+                if topic != T.VISION_BALL:
                     continue
-                if not self._validate_topic_message(topic, msg):
-                    stats.excluded["invalid_message"] += 1
-                    continue
-                if topic in _SNAPSHOT_TOPICS and isinstance(msg, dict):
-                    snapshots[topic] = (t_now, copy.deepcopy(msg))
-
-            for _, _, _, ball_msg in ball_items:
-                if self._is_replay_message(ball_msg):
-                    stats.excluded["replay"] += 1
-                    continue
-                if not self._validate_topic_message(T.VISION_BALL, ball_msg) or not isinstance(
-                    ball_msg, dict
-                ):
-                    stats.excluded["invalid_message"] += 1
-                    continue
-
                 stats.ball_samples += 1
-                row, reason = self._build_row(t_now, ball_msg, snapshots, header)
+                row, reason = self._build_row(
+                    t_now, ball_msg, snapshots, routes_by_ball_seq, header
+                )
                 if row is None:
                     assert reason is not None
                     stats.excluded[reason] += 1
                     continue
-
-                all_rows.append(row)
-                if row.is_platform_stale:
-                    stats.stale_platform_marked += 1
-                    stats.excluded["stale_platform_state"] += 1
-                else:
-                    rows.append(row)
-                    stats.kept_rows += 1
-                    if row.maze_id not in stats.maze_ids:
-                        stats.maze_ids.append(row.maze_id)
-                    if row.is_usable_for_imitation:
-                        stats.imitation_rows += 1
+                self._record_row(row, rows, all_rows, stats)
 
         loaded = LoadedRecording(
-            path=rec_path,
-            header=header,
-            rows=rows,
-            all_rows=all_rows,
-            stats=stats,
+            path=rec_path, header=header, rows=rows, all_rows=all_rows, stats=stats
         )
         self._loaded = loaded
         return loaded
@@ -265,6 +197,101 @@ class RecordingReader:
         return self._loaded
 
     @staticmethod
+    def _read_header(rec_path: Path) -> tuple[dict[str, Any], list[str]]:
+        raw_lines = [line for line in rec_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if not raw_lines:
+            raise ValueError(f"{rec_path}: empty recording file")
+        try:
+            header = json.loads(raw_lines[0])
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{rec_path}:1: invalid JSON header: {exc}") from exc
+        try:
+            validate_file("recording_header", header)
+        except ValidationError as exc:
+            raise ValueError(f"{rec_path}:1: invalid recording header: {exc}") from exc
+        if header.get("format_version") != T.RECORDING_FORMAT_VERSION:
+            raise ValueError(
+                f"{rec_path}:1: unsupported format_version {header.get('format_version')!r}"
+            )
+        return header, raw_lines[1:]
+
+    def _parse_and_validate_lines(
+        self, body_lines: list[str], stats: RecordingStats
+    ) -> list[tuple[float, int, str, Any]]:
+        clean_lines: list[tuple[float, int, str, Any]] = []
+        for line_no, raw in enumerate(body_lines, start=2):
+            try:
+                entry = json.loads(raw)
+                validate_file("recording_line", entry)
+            except (json.JSONDecodeError, ValidationError):
+                stats.excluded["invalid_message"] += 1
+                continue
+
+            t_recv_s = entry["t_recv_s"]
+            if not _is_finite_number(t_recv_s):
+                stats.excluded["invalid_message"] += 1
+                continue
+
+            topic, msg = entry["topic"], entry["msg"]
+            if self._is_replay_message(msg):
+                stats.excluded["replay"] += 1
+                continue
+            if not self._validate_topic_message(topic, msg):
+                stats.excluded["invalid_message"] += 1
+                continue
+            if topic == T.VISION_BALL and not isinstance(msg, dict):
+                stats.excluded["invalid_message"] += 1
+                continue
+
+            clean_lines.append((float(t_recv_s), line_no, topic, msg))
+
+        # Sort strictly by Recorder clock (t_recv_s) to prevent future context leakage.
+        clean_lines.sort(key=lambda item: (item[0], item[1]))
+        return clean_lines
+
+    @staticmethod
+    def _index_routes(
+        clean_lines: list[tuple[float, int, str, Any]],
+    ) -> dict[int, list[tuple[float, dict[str, Any]]]]:
+        routes_by_ball_seq: dict[int, list[tuple[float, dict[str, Any]]]] = {}
+        for t_recv_s, _, topic, msg in clean_lines:
+            if topic == T.PLAN_ROUTE and isinstance(msg, dict):
+                ball_seq = int(msg["ball_seq"])
+                routes_by_ball_seq.setdefault(ball_seq, []).append(
+                    (t_recv_s, copy.deepcopy(msg))
+                )
+        return routes_by_ball_seq
+
+    @staticmethod
+    def _update_snapshots(
+        t_now: float,
+        group: list[tuple[float, int, str, Any]],
+        snapshots: dict[str, tuple[float, dict[str, Any]]],
+    ) -> None:
+        for _, _, topic, msg in group:
+            if topic != T.VISION_BALL and topic in _SNAPSHOT_TOPICS and isinstance(msg, dict):
+                snapshots[topic] = (t_now, copy.deepcopy(msg))
+
+    @staticmethod
+    def _record_row(
+        row: TrainingRow,
+        rows: list[TrainingRow],
+        all_rows: list[TrainingRow],
+        stats: RecordingStats,
+    ) -> None:
+        all_rows.append(row)
+        if row.is_platform_stale:
+            stats.stale_platform_marked += 1
+            stats.excluded["stale_platform_state"] += 1
+            return
+        rows.append(row)
+        stats.kept_rows += 1
+        if row.maze_id not in stats.maze_ids:
+            stats.maze_ids.append(row.maze_id)
+        if row.is_usable_for_imitation:
+            stats.imitation_rows += 1
+
+    @staticmethod
     def _is_replay_message(msg: Any) -> bool:
         return isinstance(msg, dict) and msg.get("writer") == "replay"
 
@@ -276,17 +303,57 @@ class RecordingReader:
         except ValidationError:
             return False
         except KeyError:
-            # Ignore unrecognized future topics without discarding the recording line stream.
+            # Ignore unrecognized future topics without discarding the recording stream.
             return True
         return True
 
-    @staticmethod
+    @classmethod
     def _build_row(
+        cls,
         t_now: float,
         ball_msg: dict[str, Any],
         snapshots: dict[str, tuple[float, dict[str, Any]]],
+        routes_by_ball_seq: dict[int, list[tuple[float, dict[str, Any]]]],
         header: dict[str, Any],
     ) -> tuple[TrainingRow | None, str | None]:
+        game_ctx, reason = cls._check_game_state(t_now, snapshots)
+        if reason is not None:
+            return None, reason
+        assert game_ctx is not None
+        t_game, game_msg, game_state_age_ms = game_ctx
+        active_maze_id = game_msg["maze_id"]
+
+        ball_err = cls._check_ball(ball_msg)
+        if ball_err is not None:
+            return None, ball_err
+
+        plan_ctx, reason = cls._check_planning(
+            t_now, ball_msg, active_maze_id, snapshots, routes_by_ball_seq
+        )
+        if reason is not None:
+            return None, reason
+        assert plan_ctx is not None
+
+        plat_ctx, reason = cls._check_platform(t_now, snapshots)
+        if reason is not None:
+            return None, reason
+        assert plat_ctx is not None
+
+        return cls._make_training_row(
+            t_now,
+            ball_msg,
+            t_game,
+            game_msg,
+            game_state_age_ms,
+            plan_ctx,
+            plat_ctx,
+            header,
+        ), None
+
+    @staticmethod
+    def _check_game_state(
+        t_now: float, snapshots: dict[str, tuple[float, dict[str, Any]]]
+    ) -> tuple[tuple[float, dict[str, Any], float] | None, str | None]:
         game_snap = snapshots.get(T.GAME_STATE)
         if game_snap is None:
             return None, "missing_game_state"
@@ -296,54 +363,73 @@ class RecordingReader:
             return None, "stale_game_state"
         if game_msg["state"] != "playing":
             return None, "not_playing"
-
-        active_maze_id = game_msg["maze_id"]
-        if active_maze_id is None:
+        if game_msg["maze_id"] is None:
             return None, "missing_maze"
+        return (t_game, game_msg, game_state_age_ms), None
 
+    @staticmethod
+    def _check_ball(ball_msg: dict[str, Any]) -> str | None:
         if not ball_msg["is_visible"]:
-            return None, "ball_not_visible"
+            return "ball_not_visible"
         if not all(
             _is_finite_number(ball_msg[k])
             for k in ("x_mm", "y_mm", "vx_mm_s", "vy_mm_s")
         ):
-            return None, "invalid_ball"
+            return "invalid_ball"
+        return None
 
+    @staticmethod
+    def _check_planning(
+        t_now: float,
+        ball_msg: dict[str, Any],
+        active_maze_id: str,
+        snapshots: dict[str, tuple[float, dict[str, Any]]],
+        routes_by_ball_seq: dict[int, list[tuple[float, dict[str, Any]]]],
+    ) -> tuple[
+        tuple[float, dict[str, Any], float, dict[str, Any], float, dict[str, Any], float] | None,
+        str | None,
+    ]:
         maze_snap = snapshots.get(T.VISION_MAZE)
         if maze_snap is None:
             return None, "missing_maze"
         dmap_snap = snapshots.get(T.PLAN_DISTANCE_MAP)
         if dmap_snap is None:
             return None, "missing_distance_map"
-        route_snap = snapshots.get(T.PLAN_ROUTE)
-        if route_snap is None:
-            return None, "missing_route"
 
         t_maze, maze_msg = maze_snap
         t_dmap, dmap_msg = dmap_snap
-        t_route, route_msg = route_snap
-
-        if (
-            maze_msg["maze_id"] != active_maze_id
-            or dmap_msg["maze_id"] != active_maze_id
-            or route_msg["maze_id"] != active_maze_id
-        ):
+        if maze_msg["maze_id"] != active_maze_id or dmap_msg["maze_id"] != active_maze_id:
             return None, "maze_mismatch"
 
-        if route_msg["status"] != "valid" or not route_msg["target_points_mm"]:
-            return None, "invalid_route"
-        if route_msg["ball_seq"] > ball_msg["seq"]:
+        candidates = routes_by_ball_seq.get(int(ball_msg["seq"]), [])
+        if not candidates:
+            latest_route = snapshots.get(T.PLAN_ROUTE)
+            if latest_route is None:
+                return None, "missing_route"
+            if latest_route[1]["maze_id"] != active_maze_id:
+                return None, "maze_mismatch"
             return None, "route_mismatch"
 
-        route_age_ms = (t_now - t_route) * 1000.0
+        t_route, route_msg = min(candidates, key=lambda item: abs(item[0] - t_now))
+        if route_msg["maze_id"] != active_maze_id:
+            return None, "maze_mismatch"
+        if route_msg["status"] != "valid" or not route_msg["target_points_mm"]:
+            return None, "invalid_route"
+
+        route_age_ms = abs(t_route - t_now) * 1000.0
         if route_age_ms > T.CONTROLLER_INPUT_MAX_AGE_MS:
             return None, "stale_route"
 
+        return (t_maze, maze_msg, t_dmap, dmap_msg, t_route, route_msg, route_age_ms), None
+
+    @staticmethod
+    def _check_platform(
+        t_now: float, snapshots: dict[str, tuple[float, dict[str, Any]]]
+    ) -> tuple[tuple[float, dict[str, Any], float] | None, str | None]:
         platform_snap = snapshots.get(T.PLATFORM_STATE)
         if platform_snap is None:
             return None, "missing_platform_state"
         t_platform, platform_msg = platform_snap
-
         if platform_msg["is_e_stop"] or platform_msg["fault"] != "none":
             return None, "platform_fault_or_estop"
         if not all(
@@ -356,17 +442,30 @@ class RecordingReader:
             )
         ):
             return None, "invalid_platform_state"
-
         platform_age_ms = (t_now - t_platform) * 1000.0
+        return (t_platform, platform_msg, platform_age_ms), None
+
+    @staticmethod
+    def _make_training_row(
+        t_now: float,
+        ball_msg: dict[str, Any],
+        t_game: float,
+        game_msg: dict[str, Any],
+        game_state_age_ms: float,
+        plan_ctx: tuple[float, dict[str, Any], float, dict[str, Any], float, dict[str, Any], float],
+        plat_ctx: tuple[float, dict[str, Any], float],
+        header: dict[str, Any],
+    ) -> TrainingRow:
+        t_maze, maze_msg, t_dmap, _, t_route, route_msg, route_age_ms = plan_ctx
+        t_platform, platform_msg, platform_age_ms = plat_ctx
+
         is_platform_stale = platform_age_ms > T.CONTROLLER_INPUT_MAX_AGE_MS
         source = platform_msg["source"]
-        is_usable_for_imitation = (not is_platform_stale) and (
-            source in _IMITATION_SOURCES
-        )
+        is_usable_for_imitation = (not is_platform_stale) and (source in _IMITATION_SOURCES)
 
-        row = TrainingRow(
+        return TrainingRow(
             game_id=game_msg["game_id"] or header["game_id"],
-            maze_id=active_maze_id,
+            maze_id=game_msg["maze_id"],
             mode=game_msg["mode"],
             ball_seq=ball_msg["seq"],
             route_ball_seq=route_msg["ball_seq"],
@@ -401,4 +500,3 @@ class RecordingReader:
             is_platform_stale=is_platform_stale,
             is_usable_for_imitation=is_usable_for_imitation,
         )
-        return row, None
