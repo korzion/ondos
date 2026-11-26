@@ -53,6 +53,7 @@ void setup() {
   platformState.source = static_cast<uint8_t>(ondos::PlatformSource::None);
   platformState.mode = static_cast<uint8_t>(ondos::Mode::Glove);
   platformState.fault = static_cast<uint8_t>(ondos::Fault::Imu);
+  lastPlatformStateMs = millis();
 }
 
 void loop() {
@@ -75,6 +76,9 @@ void loop() {
   platformState.is_laptop_connected = laptopConnected ? 1 : 0;
   if (now - lastPlatformStateMs >= 20) {
     lastPlatformStateMs += 20;
+    if (now - lastPlatformStateMs >= 20) {
+      lastPlatformStateMs = now;
+    }
     serialHandler.sendFrame(reinterpret_cast<const uint8_t*>(&platformState),
                             sizeof(platformState));
   }

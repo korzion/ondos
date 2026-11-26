@@ -9,7 +9,8 @@
 
 namespace {
 constexpr size_t MAX_RAW_SIZE = SerialHandler::MAX_PAYLOAD_SIZE + 2;
-constexpr size_t MAX_FRAME_SIZE = SerialHandler::MAX_ENCODED_SIZE + 1;
+constexpr size_t MAX_FRAME_SIZE = SerialHandler::MAX_PAYLOAD_SIZE +
+                                  SerialHandler::MAX_PAYLOAD_SIZE / 254 + 5;
 }  // namespace
 
 SerialHandler::SerialHandler(Stream& stream) : stream_(stream) {}
