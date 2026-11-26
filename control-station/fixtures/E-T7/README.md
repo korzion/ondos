@@ -4,8 +4,8 @@ Requirement: E-R5
 
 **Method:** Run two test games with new game_ids; close the app during the second.
 
-**Pass if:** Two files are created with a valid IF-09 header and maze data; after the app publisher disconnects during the second game, its file keeps growing from live messages.
+**Pass if:** Exactly one file per game is created, each starting with a valid IF-09 header followed by the maze data; after the app disconnects during the second game, the live ball samples sent afterwards still appear in its file.
 
 ## Inputs
 
-`input.jsonl` describes two games and their retained maze and distance-map data. `after_app_close.jsonl` simulates the app disconnecting and then publishes more live ball samples. The game IDs and message values can be edited, but each message must remain valid for its topic schema.
+`input.jsonl` describes two games and their retained maze and distance-map data. While `input.jsonl` plays, the test keeps a `cs_app` connection open in place of the Control Station app; it then closes that connection (`sys/online/cs_app` = false) and plays `after_app_close.jsonl`, whose live ball samples must appear in the second file. The game IDs and message values can be edited, but each message must remain valid for its topic schema.
