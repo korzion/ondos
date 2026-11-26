@@ -1,0 +1,35 @@
+name: control-station checks
+
+# The Control Station imports shared/ from the repository root (@shared/bus/bus, @shared/topics),
+# so a change in shared/ or in the root packages can break it too.
+on:
+  pull_request:
+    paths: ["control-station/**", "shared/**", "package.json", "package-lock.json", "tsconfig.json", ".github/workflows/control-station-checks.yml"]
+  push:
+    branches: [main]
+    paths: ["control-station/**", "shared/**", "package.json", "package-lock.json", "tsconfig.json", ".github/workflows/control-station-checks.yml"]
+
+jobs:
+  typecheck-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            control-station/package-lock.json
+      - name: Root packages (mqtt and ajv for shared/)
+        run: npm ci
+      - name: Control Station packages
+        working-directory: control-station
+        run: npm ci
+      - name: Typecheck
+        working-directory: control-station
+        run: npm run typecheck
+      - name: Build
+        working-directory: control-station
+        run: npm run build
