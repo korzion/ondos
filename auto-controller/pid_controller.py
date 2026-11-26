@@ -7,6 +7,7 @@ while the output is saturated (anti-windup).
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 
 from bounds import clamp_symmetric
@@ -57,7 +58,9 @@ class PIDController:
         ball: a vision/ball payload (x_mm, y_mm, vx_mm_s, vy_mm_s are used).
         target: target_points_mm[0] of the matching plan/route, [x_mm, y_mm].
         dt_s: time since the previous vision/ball sample; None for the first sample.
+        Raises ValueError on a non-finite input, before the integral is touched.
         """
+        self._require_finite_inputs(ball, target, dt_s)
         step_s = self._integration_step_s(dt_s)
         tilt_x_deg = self._compute_axis(AXIS_X, target[AXIS_X] - ball["x_mm"], ball["vx_mm_s"], step_s)
         tilt_y_deg = self._compute_axis(AXIS_Y, target[AXIS_Y] - ball["y_mm"], ball["vy_mm_s"], step_s)
@@ -66,6 +69,17 @@ class PIDController:
     def reset(self) -> None:
         """Clear the integral (new game, pause, mode change, new maze_id, fault, invalid input)."""
         self._integral_term_deg = [0.0] * AXIS_COUNT
+
+    def _require_finite_inputs(self, ball: Mapping[str, float], target: Sequence[float],
+                               dt_s: float | None) -> None:
+        """A NaN would saturate the output and fill the integral, which then stays wrong after the input recovers."""
+        inputs = {"x_mm": ball["x_mm"], "y_mm": ball["y_mm"], "vx_mm_s": ball["vx_mm_s"],
+                  "vy_mm_s": ball["vy_mm_s"], "target_x_mm": target[AXIS_X], "target_y_mm": target[AXIS_Y]}
+        if dt_s is not None:
+            inputs["dt_s"] = dt_s
+        non_finite_names = [name for name, value in inputs.items() if not math.isfinite(value)]
+        if non_finite_names:
+            raise ValueError(f"non-finite PID input: {non_finite_names}")
 
     def _integration_step_s(self, dt_s: float | None) -> float:
         if dt_s is None or dt_s <= 0:
