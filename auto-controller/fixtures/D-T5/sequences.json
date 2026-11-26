@@ -1,0 +1,120 @@
+{
+  "settings": {
+    "pid_kp_deg_per_mm": 0.1,
+    "pid_ki_deg_per_mm_per_s": 0.05,
+    "pid_kd_deg_per_mm_s": 0.02,
+    "pid_integral_limit_deg": 2.0,
+    "max_tilt_deg": 5.0
+  },
+  "tolerance_deg": 1e-6,
+  "sequences": [
+    {
+      "name": "tracking",
+      "what": "Small error, then the ball moves towards the target: P, I and velocity damping",
+      "steps": [
+        {"ball": {"timestamp_s": 100.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "first sample: P only", "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 100.05, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "integral starts", "expected_tilt_deg": [1.025, -1.025]},
+        {"ball": {"timestamp_s": 100.10, "x_mm": 2.0, "y_mm": -2.0, "vx_mm_s": 40.0, "vy_mm_s": -40.0},
+         "target_points_mm": [[10.0, -10.0], [20.0, -10.0]],
+         "note": "velocity damping", "expected_tilt_deg": [0.045, -0.045]}
+      ]
+    },
+    {
+      "name": "saturation",
+      "what": "Far target saturates the output; the integral must not grow meanwhile",
+      "steps": [
+        {"ball": {"timestamp_s": 200.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[100.0, -100.0]],
+         "note": "saturated at max_tilt_deg", "expected_tilt_deg": [5.0, -5.0]},
+        {"ball": {"timestamp_s": 200.05, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[100.0, -100.0]]},
+        {"ball": {"timestamp_s": 200.10, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[100.0, -100.0]]},
+        {"ball": {"timestamp_s": 200.15, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[100.0, -100.0]],
+         "note": "still saturated", "expected_tilt_deg": [5.0, -5.0]},
+        {"ball": {"timestamp_s": 200.20, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "no windup: only one integral step after saturation", "expected_tilt_deg": [1.025, -1.025]}
+      ]
+    },
+    {
+      "name": "integral_limit",
+      "what": "Large Ki: the integral stops at pid_integral_limit_deg, unwinds, and is held while saturated",
+      "settings": {"pid_ki_deg_per_mm_per_s": 1.0},
+      "steps": [
+        {"ball": {"timestamp_s": 300.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]], "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 300.05, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]], "expected_tilt_deg": [1.5, -1.5]},
+        {"ball": {"timestamp_s": 300.10, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]]},
+        {"ball": {"timestamp_s": 300.15, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]]},
+        {"ball": {"timestamp_s": 300.20, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "integral reaches the limit", "expected_tilt_deg": [3.0, -3.0]},
+        {"ball": {"timestamp_s": 300.25, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "integral held at the limit", "expected_tilt_deg": [3.0, -3.0]},
+        {"ball": {"timestamp_s": 300.30, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[-10.0, 10.0]],
+         "note": "error changes sign: integral unwinds", "expected_tilt_deg": [0.5, -0.5]},
+        {"ball": {"timestamp_s": 300.35, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[-100.0, 100.0]],
+         "note": "saturated the other way", "expected_tilt_deg": [-5.0, 5.0]},
+        {"ball": {"timestamp_s": 300.40, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[0.0, 0.0]],
+         "note": "integral was held while saturated", "expected_tilt_deg": [1.5, -1.5]}
+      ]
+    },
+    {
+      "name": "stop_restart",
+      "what": "Integral builds up, the controller is stopped (reset) and restarted with the same input",
+      "steps": [
+        {"ball": {"timestamp_s": 400.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]], "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 400.05, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]]},
+        {"ball": {"timestamp_s": 400.10, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "integral built up", "expected_tilt_deg": [1.05, -1.05]},
+        {"reset": true, "note": "stop: pause, mode change, new maze_id, fault or invalid input"},
+        {"ball": {"timestamp_s": 401.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "restart: integral cleared, first sample again", "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 401.05, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]], "expected_tilt_deg": [1.025, -1.025]}
+      ]
+    },
+    {
+      "name": "long_gap",
+      "what": "Two seconds between ball samples: the integral step is capped",
+      "steps": [
+        {"ball": {"timestamp_s": 500.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]], "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 502.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "integral step capped at 0.1 s", "expected_tilt_deg": [1.05, -1.05]}
+      ]
+    },
+    {
+      "name": "clock_step_back",
+      "what": "A ball sample with an older timestamp than the previous one: the integral does not move",
+      "steps": [
+        {"ball": {"timestamp_s": 600.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]], "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 599.95, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "dt < 0: no integral step", "expected_tilt_deg": [1.0, -1.0]},
+        {"ball": {"timestamp_s": 600.00, "x_mm": 0.0, "y_mm": 0.0, "vx_mm_s": 0.0, "vy_mm_s": 0.0},
+         "target_points_mm": [[10.0, -10.0]],
+         "note": "time moves forward again", "expected_tilt_deg": [1.025, -1.025]}
+      ]
+    }
+  ]
+}

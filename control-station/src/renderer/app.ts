@@ -4,11 +4,11 @@ import { Bus } from "@shared/bus/bus";
 import { BROKER_HOST, BROKER_WS_PORT } from "@shared/topics";
 import { BusClient } from "./busClient";
 import { Tab } from "./tab";
-import { ExampleTab } from "./exampleTab";
 import { PlotsTab } from "./plotsTab";
 import { CameraTab } from "./cameraTab";
 import { TopBar } from "./topBar";
 import { VariablesTab } from "./variablesTab";
+import { StartTab } from "./startTab";
 
 const BROKER_WS_URL = `ws://${BROKER_HOST}:${BROKER_WS_PORT}`; // the app UI uses the WebSocket listener (IF-03)
 
@@ -19,9 +19,13 @@ const BUS_STATUS_CHECK_INTERVAL_MS = 250;
 const bus = new Bus("cs_app", BROKER_WS_URL);
 const bus_client = new BusClient(bus);
 const top_bar = new TopBar(bus_client, document.getElementById("top-bar") as HTMLElement);
+// Created here because it needs to exist before show_bus_status() is called
+const start_tab = new StartTab(bus_client);
 
 function show_bus_status(): void {
-  top_bar.set_banner("bus_not_connected", !bus_client.is_connected());
+  const is_connected = bus_client.is_connected();
+  top_bar.set_banner("bus_not_connected", !is_connected);
+  if (!is_connected) start_tab.update_buttons(null);
 }
 
 window.addEventListener("beforeunload", () => {
@@ -35,13 +39,13 @@ setInterval(show_bus_status, BUS_STATUS_CHECK_INTERVAL_MS);
 void bus_client.connect();
 
 // -- Tabs -------
-
 const tabs: Tab[] = [
-  new ExampleTab("Start", bus_client),
+  start_tab,
   new VariablesTab("Variables", bus_client),
   new PlotsTab("Plots", bus_client),
   new CameraTab("Camera", bus_client),
 ];
+
 const tab_buttons = new Map<Tab, HTMLButtonElement>();
 let current_tab: Tab | null = null;
 
@@ -53,7 +57,7 @@ function add_tab(tab: Tab): void {
   button.textContent = tab.title;
   button.addEventListener("click", () => switch_tab(tab));
   button.classList.add("tab-button");
-  
+
   tab_bar.appendChild(button);
   tab_buttons.set(tab, button);
   tab_area.appendChild(tab.root);
