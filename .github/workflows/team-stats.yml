@@ -1,12 +1,18 @@
 name: Team stats page
 
-# Rebuilds the team activity page on every push to main, every night,
-# and when started by hand from the Actions tab.
+# Rebuilds the team activity page and the issue plan page (/plan/) on every
+# push to main, when an issue or pull request changes, every hour (a "blocked by"
+# change sends no event), and when started by hand from the Actions tab.
+# pull_request_target runs the workflow and code of main, never the code of the pull request.
 on:
   push:
     branches: [main]
+  issues:
+    types: [opened, edited, closed, reopened, assigned, unassigned, deleted]
+  pull_request_target:
+    types: [opened, edited, closed, reopened, ready_for_review, converted_to_draft]
   schedule:
-    - cron: "0 3 * * *"   # 06:00 Istanbul time
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -39,6 +45,14 @@ jobs:
           mkdir -p site/data
           python dashboard/collect_stats.py --out site/data/stats.json
           cp dashboard/index.html site/index.html
+
+      - name: Collect issue plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p site/plan
+          python dashboard/collect_plan.py --out site/plan/data.json
+          cp dashboard/plan.html site/plan/index.html
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

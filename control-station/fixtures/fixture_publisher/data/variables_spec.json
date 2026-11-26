@@ -1,0 +1,150 @@
+{
+  "platform": [
+    {
+      "name": "max_tilt_deg",
+      "value": 10,
+      "default": 10,
+      "min": 0,
+      "max": 15,
+      "step": 0.5,
+      "choices": null,
+      "is_live": true,
+      "description": "Maximum allowed platform tilt angle."
+    },
+    {
+      "name": "serial_port",
+      "value": "COM3",
+      "default": "COM3",
+      "min": null,
+      "max": null,
+      "step": null,
+      "choices": [
+        "COM3",
+        "COM4"
+      ],
+      "is_live": true,
+      "description": "Serial port of the ESP32."
+    }
+  ],
+  "glove": [
+    {
+      "name": "is_vibration_enabled",
+      "value": true,
+      "default": true,
+      "min": null,
+      "max": null,
+      "step": null,
+      "choices": null,
+      "is_live": true,
+      "description": "Glove vibration on or off."
+    },
+    {
+      "name": "vibration_intensity_pct",
+      "value": 60,
+      "default": 60,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "choices": null,
+      "is_live": true,
+      "description": "Vibration strength."
+    }
+  ],
+  "vision": [
+    {
+      "name": "edit_clear_time_s",
+      "value": 1.5,
+      "default": 1.5,
+      "min": 0.5,
+      "max": 5,
+      "step": 0.5,
+      "choices": null,
+      "is_live": true,
+      "description": "Still time before an automatic rescan."
+    },
+    {
+      "name": "image_rate_hz",
+      "value": 5,
+      "default": 5,
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "choices": null,
+      "is_live": true,
+      "description": "Camera image rate, 0 = off."
+    }
+  ],
+  "ai": [
+    {
+      "name": "model_version",
+      "value": "imitation-1",
+      "default": "imitation-1",
+      "min": null,
+      "max": null,
+      "step": null,
+      "choices": [
+        "imitation-1",
+        "ppo-20261201-2"
+      ],
+      "is_live": true,
+      "description": "Saved model in use."
+    },
+    {
+      "name": "tilt_scale_pct",
+      "value": 100,
+      "default": 100,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "choices": null,
+      "is_live": true,
+      "description": "Scale of the AI tilt output."
+    }
+  ],
+  "pid": [
+    {
+      "name": "pid_kp_deg_per_mm",
+      "value": 0.15,
+      "default": 0.15,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "choices": null,
+      "is_live": true,
+      "description": "Proportional gain (deg/mm)."
+    },
+    {
+      "name": "pid_ki_deg_per_mm_per_s",
+      "value": 0.02,
+      "default": 0.02,
+      "min": 0,
+      "max": 0.2,
+      "step": 0.01,
+      "choices": null,
+      "is_live": true,
+      "description": "Integral gain (deg/(mm·s))."
+    },
+    {
+      "name": "pid_kd_deg_per_mm_s",
+      "value": 0.05,
+      "default": 0.05,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.01,
+      "choices": null,
+      "is_live": true,
+      "description": "Velocity damping gain (deg per mm/s)."
+    },
+    {
+      "name": "pid_integral_limit_deg",
+      "value": 3,
+      "default": 3,
+      "min": 0,
+      "max": 10,
+      "step": 0.5,
+      "choices": null,
+      "is_live": true,
+      "description": "Largest tilt the integral term may add (±deg)."
+    }
+  ]
+}
