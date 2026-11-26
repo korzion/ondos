@@ -23,6 +23,7 @@ class Publication(NamedTuple):
     program: str
     topic: str
     fields: dict
+    ball_index: int | None = None  # vision/ball only: the sample number that ball_seq in the data files points to
 
 
 @lru_cache(maxsize=1)

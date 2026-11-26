@@ -24,7 +24,7 @@ import paho.mqtt.client as mqtt  # noqa: E402
 from engine import DataError, Engine  # noqa: E402
 from shared import topics as T  # noqa: E402
 from shared.bus import Bus, now_s  # noqa: E402
-from topic_table import STAND_IN_PROGRAMS, Publication  # noqa: E402
+from topic_table import STAND_IN_PROGRAMS, Publication, writer_of  # noqa: E402
 
 log = logging.getLogger("fixture_publisher")
 TICK_S = 0.005
@@ -38,6 +38,7 @@ class Publisher:
         self._engine = engine
         self._host, self._port = host, port
         self._buses: dict[str, Bus] = {}
+        self._ball_seqs: dict[int, int] = {}  # sample number in the data -> seq of the vision/ball message sent for it
         self._incoming: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._listener = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ondos-fixture-listener")
@@ -102,9 +103,26 @@ class Publisher:
     def _publish(self, publications: list[Publication]) -> None:
         self._sync_connections()
         for publication in publications:
-            bus = self._buses.get(publication.program)
-            if bus is not None and bus.is_connected():
-                bus.publish(publication.topic, publication.fields)
+            self._send(publication)
+
+    def _send(self, publication: Publication) -> None:
+        """ball_seq must be the seq of the ball message it answers (IF-04), which only the bus knows.
+
+        A route or tilt whose ball message was not sent is not sent either.
+        """
+        fields = publication.fields
+        if "ball_seq" in fields:
+            seq = self._ball_seqs.get(fields["ball_seq"])
+            if seq is None:
+                return
+            fields = {**fields, "ball_seq": seq}
+        bus = self._buses.get(publication.program)
+        if bus is None or not bus.is_connected():
+            self._ball_seqs.pop(publication.ball_index, None)
+            return
+        sent = bus.publish(publication.topic, fields)
+        if publication.ball_index is not None:
+            self._ball_seqs[publication.ball_index] = sent["seq"]
 
     def _sync_connections(self) -> None:
         """A program is online while it is not switched off: sys/online/<program> follows the bus connection."""
@@ -118,6 +136,8 @@ class Publisher:
             elif not is_wanted and bus is not None:
                 bus.close()
                 del self._buses[program]
+                if program == writer_of(T.VISION_BALL):
+                    self._ball_seqs.clear()  # no ball messages from now on, and a new connection counts from 0
                 log.info("%s offline", program)
 
     def _close(self) -> None:
