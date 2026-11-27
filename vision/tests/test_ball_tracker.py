@@ -23,7 +23,13 @@ OTHER_COLOURS_HSV = {"hue below": (0, 200, 150), "hue above": (40, 200, 150),
 BALL_DIAMETER_MM = 12.0  # the default of ball_diameter_mm
 SUBPIXEL_SHIFT = 4  # the disc is drawn with 1/16 pixel steps, so its centre is not rounded to a pixel
 T_S = 10.0
+FRAME_PERIOD_S = 1.0 / 30.0
+ROLLING_SPEED_MM_S = 90.0  # 3 mm per frame
+ROLLING_END_MM = (-24.0, 20.0)
+JUMP_MM = 5.0
 POSITION_TOLERANCE_MM = 0.5
+SPEED_TOLERANCE_MM_S = 5.0
+CLEAR_DIFFERENCE_MM = 0.2  # more than the tracker's own error on these frames
 
 
 @pytest.fixture(scope="module")
@@ -55,10 +61,22 @@ def scene(config: VisionConfig, *discs: tuple[float, float, float], disc_hsv: tu
     return frame
 
 
-def track(tracker: BallTracker, calibrator: BoardCalibrator, frame: np.ndarray) -> BallState:
+def track(tracker: BallTracker, calibrator: BoardCalibrator, frame: np.ndarray, t_s: float = T_S) -> BallState:
     """One frame as VisionNode handles it: the calibration first, then the ball."""
     calibrator.update(frame)
-    return tracker.update(frame, T_S)
+    return tracker.update(frame, t_s)
+
+
+def track_all(tracker: BallTracker, calibrator: BoardCalibrator, frames: list[np.ndarray]) -> list[BallState]:
+    """The ball states of frames that follow each other at 30 frames per second."""
+    return [track(tracker, calibrator, frame, T_S + index * FRAME_PERIOD_S) for index, frame in enumerate(frames)]
+
+
+def rolling_ball(config: VisionConfig) -> list[np.ndarray]:
+    """3 frames of a ball that rolls along +x at ROLLING_SPEED_MM_S and ends at ROLLING_END_MM."""
+    end_x_mm, y_mm = ROLLING_END_MM
+    step_mm = ROLLING_SPEED_MM_S * FRAME_PERIOD_S
+    return [scene(config, (end_x_mm - frames_left * step_mm, y_mm, BALL_DIAMETER_MM)) for frames_left in (2, 1, 0)]
 
 
 def measurement(config: VisionConfig, frame: np.ndarray) -> tuple[float | None, float | None]:
@@ -130,3 +148,63 @@ def test_no_measurement_while_the_markers_are_not_seen(config):
     tracker = BallTracker(ball_variables(), BoardCalibrator(config))
     state = tracker.update(scene(config, (0.0, 0.0, BALL_DIAMETER_MM)), T_S)
     assert (state.meas_x_mm, state.meas_y_mm) == (None, None)
+
+
+def test_speed_of_a_rolling_ball_is_found_within_3_frames(config):
+    calibrator = BoardCalibrator(config)
+    tracker = BallTracker(ball_variables(), calibrator)
+    state = track_all(tracker, calibrator, rolling_ball(config))[-1]
+    assert (state.vx_mm_s, state.vy_mm_s) == pytest.approx((ROLLING_SPEED_MM_S, 0.0), abs=SPEED_TOLERANCE_MM_S)
+    assert (state.x_mm, state.y_mm) == pytest.approx(ROLLING_END_MM, abs=POSITION_TOLERANCE_MM)
+    assert (state.is_visible, state.is_predicted) == (True, False)
+
+
+def test_a_hidden_ball_is_predicted_and_then_lost(config):
+    """C-R5 at 30 frames per second: the ball is lost in the 6th frame without it, 200 ms after it was seen last."""
+    calibrator = BoardCalibrator(config)
+    tracker = BallTracker(ball_variables(), calibrator)
+    states = track_all(tracker, calibrator, rolling_ball(config) + [scene(config)] * 6)
+    first_hidden, last_held, lost = states[3], states[7], states[8]
+    predicted_x_mm = ROLLING_END_MM[0] + ROLLING_SPEED_MM_S * FRAME_PERIOD_S
+    assert first_hidden.x_mm == pytest.approx(predicted_x_mm, abs=POSITION_TOLERANCE_MM)
+    assert (first_hidden.is_visible, first_hidden.is_predicted, first_hidden.meas_x_mm) == (True, True, None)
+    assert (last_held.is_visible, last_held.is_predicted) == (True, True)
+    assert (lost.is_visible, lost.vx_mm_s, lost.meas_x_mm) == (False, 0.0, None)
+
+
+def test_lost_timeout_is_live(config):
+    variables, calibrator = ball_variables(), BoardCalibrator(config)
+    tracker = BallTracker(variables, calibrator)
+    variables.apply({"lost_timeout_ms": 400})
+    states = track_all(tracker, calibrator, rolling_ball(config) + [scene(config)] * 6)
+    assert states[-1].is_visible is True
+
+
+def test_parallax_is_corrected_after_calibrate_camera(config):
+    """The ball centre is half a diameter above the plate, so a camera above the board centre sees it further out."""
+    calibrator = BoardCalibrator(config)
+    tracker = BallTracker(ball_variables(), calibrator)
+    _, camera_height_mm = calibrator.calibrate(scene(config))
+    seen_further_out = camera_height_mm / (camera_height_mm - BALL_DIAMETER_MM / 2)
+    x_mm, y_mm = 90.0, -90.0
+    state = track(tracker, calibrator, scene(config, (x_mm * seen_further_out, y_mm * seen_further_out,
+                                                      BALL_DIAMETER_MM)))
+    assert (state.meas_x_mm, state.meas_y_mm) == pytest.approx((x_mm, y_mm), abs=POSITION_TOLERANCE_MM)
+    assert (state.x_mm, state.y_mm) == pytest.approx((x_mm, y_mm), abs=POSITION_TOLERANCE_MM)
+
+
+def lag_after_a_jump_mm(config: VisionConfig, filter_noise: float) -> float:
+    """How far the filtered position stays behind a resting ball that jumps, with filter_noise set after the start."""
+    variables, calibrator = ball_variables(), BoardCalibrator(config)
+    tracker = BallTracker(variables, calibrator)
+    variables.apply({"filter_noise": filter_noise})
+    frames = [scene(config, (0.0, 0.0, BALL_DIAMETER_MM))] * 5 + [scene(config, (JUMP_MM, 0.0, BALL_DIAMETER_MM))]
+    state = track_all(tracker, calibrator, frames)[-1]
+    return state.meas_x_mm - state.x_mm
+
+
+def test_filter_noise_is_live(config):
+    """C.7: a higher filter_noise reacts faster, so the filtered position follows a jump more closely."""
+    lags_mm = [lag_after_a_jump_mm(config, filter_noise) for filter_noise in (0.1, 1.0, 10.0)]
+    assert lags_mm[0] > lags_mm[1] + CLEAR_DIFFERENCE_MM
+    assert lags_mm[1] > lags_mm[2] + CLEAR_DIFFERENCE_MM

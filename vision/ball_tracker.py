@@ -1,4 +1,4 @@
-"""BallTracker (C.5): finds the ball by colour and size and gives its position in the board frame."""
+"""BallTracker (C.5): finds the ball by colour, corrects the parallax and filters position and speed."""
 from __future__ import annotations
 
 import math
@@ -6,6 +6,7 @@ import math
 import cv2
 import numpy as np
 
+from shared.ball_filter import BallFilter
 from vision.ball_state import BallState
 from vision.board_calibrator import BoardCalibrator
 from vision.vision_variables import VisionVariables
@@ -28,24 +29,41 @@ class BallTracker:
         # ASSUMPTION (#47): C.7 uses a new ball_diameter_mm from the next read_maze. Until MazeReader (#48) is
         # connected, the value is read once, at the start.
         self._ball_diameter_mm = variables.get("ball_diameter_mm")
+        self._filter = BallFilter(variables.get("filter_noise"), variables.get("lost_timeout_ms"))
 
     def update(self, frame: np.ndarray, t_s: float) -> BallState:
         """Ball state for the frame taken at t_s. The calibrator must have seen this frame before."""
-        # The position is the unfiltered measurement here; the parallax correction and the filter come next.
-        measurement_mm = self._measure(frame)
-        if measurement_mm is None:
-            return BallState(0.0, 0.0, 0.0, 0.0, False, False, None, None)
-        meas_x_mm, meas_y_mm = measurement_mm
-        return BallState(meas_x_mm, meas_y_mm, 0.0, 0.0, True, False, meas_x_mm, meas_y_mm)
+        # ASSUMPTION (#47): meas_x_mm and meas_y_mm (IF-04: the unfiltered measurement) are parallax corrected, like
+        # x_mm and y_mm: they are what the filter gets.
+        meas_x_mm, meas_y_mm = self._measure(frame)
+        self._use_live_filter_settings()
+        estimate = self._filter.update(meas_x_mm, meas_y_mm, t_s)
+        return BallState(*estimate, meas_x_mm, meas_y_mm)
 
-    def _measure(self, frame: np.ndarray) -> tuple[float, float] | None:
-        """Board position of the ball in this frame; None when no blob has the ball colour and size (C.8)."""
+    def _use_live_filter_settings(self) -> None:
+        # The variables change on the bus thread and the filter has no lock, so they are copied here, in update().
+        self._filter.filter_noise = self._variables.get("filter_noise")
+        self._filter.lost_timeout_ms = self._variables.get("lost_timeout_ms")
+
+    def _measure(self, frame: np.ndarray) -> tuple[float, float] | tuple[None, None]:
+        """Board position of the ball in this frame; (None, None) when no blob has the ball colour and size (C.8)."""
         if not self._calibrator.is_calibrated:
-            return None  # without the pixel -> board mapping neither the size nor the position is known
+            return None, None  # without the pixel -> board mapping neither the size nor the position is known
         ball_centre_px = self._find_ball_px(frame)
         if ball_centre_px is None:
-            return None
-        return self._calibrator.to_board_mm(*ball_centre_px)
+            return None, None
+        return self._correct_parallax(*self._calibrator.to_board_mm(*ball_centre_px))
+
+    def _correct_parallax(self, seen_x_mm: float, seen_y_mm: float) -> tuple[float, float]:
+        """Board position under the ball centre, from the plate position where the camera sees that centre."""
+        camera_height_mm = self._calibrator.camera_height_mm
+        if camera_height_mm is None:  # calibrate_camera has not run yet
+            return seen_x_mm, seen_y_mm
+        # ASSUMPTION (#47): the camera is above the board origin (C.4: fixed above the maze centre) and the plate is
+        # level. The ball centre is half a diameter above the plate, so it is seen further from the origin than it is.
+        ball_centre_height_mm = self._ball_diameter_mm / 2
+        scale = (camera_height_mm - ball_centre_height_mm) / camera_height_mm
+        return seen_x_mm * scale, seen_y_mm * scale
 
     def _find_ball_px(self, frame: np.ndarray) -> tuple[float, float] | None:
         """Image centre of the ball-coloured blob nearest to the ball size; None when no blob is near enough."""
