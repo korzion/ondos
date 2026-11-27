@@ -6,7 +6,9 @@ import { BusClient } from "./busClient";
 import { Tab } from "./tab";
 import { PlotsTab } from "./plotsTab";
 import { CameraTab } from "./cameraTab";
+import { TwinTab } from "./twinTab";
 import { TopBar } from "./topBar";
+import { VariablesTab } from "./variablesTab";
 import { StartTab } from "./startTab";
 import { ReplayController } from "./replayController";
 
@@ -44,7 +46,9 @@ void bus_client.connect();
 // -- Tabs -------
 const tabs: Tab[] = [
   start_tab,
+  new VariablesTab("Variables", bus_client),
   new PlotsTab("Plots", bus_client),
+  new TwinTab("Twin", bus_client),
   new CameraTab("Camera", bus_client),
 ];
 

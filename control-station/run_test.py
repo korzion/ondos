@@ -8,15 +8,22 @@ see shared/testing/runner.py for the helpers (check, load_json, play_fixture, ob
 """
 import json
 import math
+import os
+import signal
+import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, for `import shared`
 
 from shared import topics as T  # noqa: E402
+from shared.bus import Bus  # noqa: E402
+from shared.interfaces import ValidationError, validate, validate_file  # noqa: E402
 from shared.testing import TestSuite  # noqa: E402
+from shared.tools.replay import Replayer  # noqa: E402
 
 suite = TestSuite(__file__)
 
@@ -34,6 +41,136 @@ MOVING_FIELDS = {
 }
 FIXTURE_AMPLITUDE = 20.0
 FIXTURE_PERIOD_S = 8.0
+RECORDER_STARTUP_TIMEOUT_S = 15  # tsx compiles recorder.ts on first start, slow on a cold machine
+
+
+def clear_retained(t, topic: str) -> None:
+    """Remove a retained message from the test broker, so a stale value cannot be mistaken for a fresh one."""
+    import paho.mqtt.client as mqtt
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"ondos-test-clear-{id(t):x}")
+    client.connect(t.host, t.port)
+    client.loop_start()
+    try:
+        client.publish(topic, b"", qos=1, retain=True).wait_for_publish(2)
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+
+def start_recorder(t, recording_folder: Path) -> subprocess.Popen:
+    """Start Recorder against the test broker and wait until it reports online."""
+    t.require_broker()
+    # A retained `true` left by an earlier run would make the wait below return before this Recorder is online.
+    clear_retained(t, T.sys_online("recorder"))
+    process = subprocess.Popen(
+        ["node", str(MODULE_DIR.parent / "node_modules" / "tsx" / "dist" / "cli.mjs"),
+         str(MODULE_DIR / "recorder.ts"), f"mqtt://{t.host}:{t.port}"],
+        cwd=recording_folder,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        # Own process group, so stop_recorder() reaches the node child that tsx starts.
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        start_new_session=os.name != "nt",
+    )
+    online = wait_for_online(t, "recorder", process, RECORDER_STARTUP_TIMEOUT_S)
+    if online is True:
+        time.sleep(0.5)
+        return process
+    if online is None:
+        output = process.stdout.read() if process.stdout else ""
+        raise AssertionError(f"Recorder exited during startup: {output}")
+    output = stop_recorder(process)
+    raise AssertionError(f"Recorder did not come online: {output}")
+
+
+def wait_for_online(t, program: str, process: subprocess.Popen, timeout_s: float) -> bool | None:
+    """Wait with one subscriber until sys/online/<program> is true.
+    Returns True when online, None if the process exited first, False on timeout."""
+    import paho.mqtt.client as mqtt
+    online = threading.Event()
+
+    def on_connect(client, *args):
+        client.subscribe(T.sys_online(program), qos=1)
+
+    def on_message(client, userdata, message):
+        if message.payload == b"true":
+            online.set()
+
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"ondos-test-wait-{program}-{id(t):x}")
+    client.on_connect, client.on_message = on_connect, on_message
+    client.connect(t.host, t.port)
+    client.loop_start()
+    try:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if online.wait(0.1):
+                return True
+            if process.poll() is not None:
+                return None
+        return online.is_set()
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+
+def fixture_game_ids(t, name: str) -> list[str]:
+    """The game_ids of the game/state messages of a fixture, in order of first appearance."""
+    return list(dict.fromkeys(
+        line["msg"]["game_id"] for line in t.load_jsonl(name)
+        if line["topic"] == T.GAME_STATE and line["msg"].get("game_id")))
+
+
+def kill_process_tree(process: subprocess.Popen) -> None:
+    """Kill the tsx launcher and the node child it runs recorder.ts in."""
+    if os.name == "nt":
+        # process.kill() would end only the launcher; /T also ends the child holding the MQTT connection.
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    else:
+        os.killpg(process.pid, signal.SIGKILL)
+
+
+def stop_recorder(process: subprocess.Popen) -> str:
+    """Stop Recorder without leaving its MQTT client running after a test."""
+    if process.poll() is None:
+        if os.name == "nt":
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(process.pid, signal.SIGTERM)
+    try:
+        output, _ = process.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        kill_process_tree(process)
+        output, _ = process.communicate(timeout=3)
+    return output
+
+
+def wait_for_file(path: Path, timeout_s: float = 3) -> bool:
+    """Wait until Recorder has created a non-empty JSONL file."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if path.is_file() and path.stat().st_size > 0:
+            return True
+        time.sleep(0.05)
+    return path.is_file() and path.stat().st_size > 0
+
+
+def recording_rows(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def is_valid_recording(rows: list[dict]) -> bool:
+    if not rows:
+        return False
+    try:
+        validate_file("recording_header", rows[0])
+        for row in rows[1:]:
+            validate_file("recording_line", row)
+            validate(row["topic"], row["msg"])
+    except (ValidationError, KeyError, TypeError):
+        return False
+    return True
 
 
 def example_payload(topic: str) -> dict:
@@ -156,12 +293,116 @@ def e_t6(t):
 
 @suite.test("E-T7", "Recording", requirement="E-R5")
 def e_t7(t):
-    t.not_implemented()
+    game_ids = fixture_game_ids(t, "input.jsonl")
+    after_close_balls = [(line["msg"]["x_mm"], line["msg"]["y_mm"])
+                         for line in t.load_jsonl("after_app_close.jsonl") if line["topic"] == T.VISION_BALL]
+    with tempfile.TemporaryDirectory(prefix="ondos-e-t7-") as folder_name:
+        folder = Path(folder_name)
+        recordings = folder / "recordings"
+        process = start_recorder(t, folder)
+        # Stands in for the Control Station app: online during the games, then disconnects cleanly.
+        app = Bus("cs_app", t.host, t.port)
+        app_connected = False
+        try:
+            app.connect()
+            app_connected = True
+            t.play_fixture("input.jsonl", background=False)
+            files = [recordings / f"{game_id}.jsonl" for game_id in game_ids]
+            files_ready = all([wait_for_file(path) for path in files])
+            found = sorted(p.name for p in recordings.glob("*.jsonl"))
+            t.check("one file was created for each game",
+                    len(game_ids) == 2 and files_ready and found == sorted(p.name for p in files),
+                    f"expected {sorted(p.name for p in files)}, found {found}")
+            if not files_ready:
+                return
+
+            rows_per_file = [recording_rows(path) for path in files]
+            headers_ok = True
+            for rows, game_id in zip(rows_per_file, game_ids):
+                try:
+                    validate_file("recording_header", rows[0])
+                    headers_ok = headers_ok and rows[0].get("game_id") == game_id
+                except (ValidationError, IndexError):
+                    headers_ok = False
+            t.check("each file starts with a valid IF-09 header", headers_ok)
+            t.check("every recorded row matches the IF-09 and topic schemas",
+                    all(is_valid_recording(rows) for rows in rows_per_file))
+            maze_first = all(len(rows) > 1 and rows[1].get("topic") == T.VISION_MAZE for rows in rows_per_file)
+            t.check("retained maze data is present near the start of each file", maze_first)
+
+            second_file = files[-1]
+            rows_before_app_close = len(recording_rows(second_file))
+            app.close()
+            app_connected = False
+            t.play_fixture("after_app_close.jsonl", background=False)
+            deadline = time.monotonic() + 3
+            recorded_balls: list[tuple] = []
+            while time.monotonic() < deadline:
+                new_rows = recording_rows(second_file)[rows_before_app_close:]
+                recorded_balls = [(row["msg"].get("x_mm"), row["msg"].get("y_mm")) for row in new_rows
+                                  if row.get("topic") == T.VISION_BALL and isinstance(row.get("msg"), dict)]
+                # A last sample of the game may land just after the row count above, so compare the tail.
+                if recorded_balls[-len(after_close_balls):] == after_close_balls:
+                    break
+                time.sleep(0.05)
+            t.check("live messages are still recorded after the app disconnects",
+                    bool(after_close_balls) and recorded_balls[-len(after_close_balls):] == after_close_balls,
+                    f"expected ball samples {after_close_balls}, recorded {recorded_balls}")
+        finally:
+            if app_connected:
+                app.close()
+            output = stop_recorder(process)
+            if any(not check.ok for check in t.checks):
+                print(output, end="")
 
 
 @suite.test("E-T8", "No replay in the recording", requirement="E-R5")
 def e_t8(t):
-    t.not_implemented()
+    game_ids = fixture_game_ids(t, "input.jsonl")
+    # Line 1 is the recording header; the replay tool never publishes some topics (e.g. game/state).
+    replay_body = [line for line in t.load_jsonl("replay.jsonl")[1:]
+                   if Replayer.is_replayable(line["topic"]) and isinstance(line["msg"], dict)]
+    replayed_balls = {(line["msg"]["x_mm"], line["msg"]["y_mm"])
+                      for line in replay_body if line["topic"] == T.VISION_BALL}
+    with tempfile.TemporaryDirectory(prefix="ondos-e-t8-") as folder_name:
+        folder = Path(folder_name)
+        process = start_recorder(t, folder)
+        output = ""
+        try:
+            if not t.check("input.jsonl starts one game", len(game_ids) == 1, f"game_ids: {game_ids}"):
+                return
+            t.play_fixture("input.jsonl", background=False)
+            t.play_fixture("live.jsonl", background=False)
+            replayer = Replayer(t.path("replay.jsonl"), 1, t.host, t.port)
+            replayer.run()
+            t.play_fixture("live.jsonl", background=False)
+            recording = folder / "recordings" / f"{game_ids[0]}.jsonl"
+            ready = wait_for_file(recording)
+            t.check("recording file was created", ready)
+            if not ready:
+                return
+            rows = recording_rows(recording)[1:]
+            replay_rows = [row for row in rows if isinstance(row.get("msg"), dict)
+                           and row["msg"].get("writer") == "replay"]
+            # Catches replayed samples even if they reached the file without the replay writer tag.
+            replayed_ball_rows = [row for row in rows if row.get("topic") == T.VISION_BALL
+                                  and isinstance(row.get("msg"), dict)
+                                  and (row["msg"].get("x_mm"), row["msg"].get("y_mm")) in replayed_balls]
+            live_platform_rows = [row for row in rows if row.get("topic") == T.PLATFORM_STATE
+                              and isinstance(row.get("msg"), dict)
+                              and row["msg"].get("writer") == "bridge"]
+            t.check("replay-tagged messages are excluded", not replay_rows,
+                    f"found {len(replay_rows)} replay-tagged rows")
+            t.check("replayed ball samples are not in the file", not replayed_ball_rows,
+                    f"found {len(replayed_ball_rows)} rows at {sorted(replayed_balls)}")
+            t.check("shared replay tool played its fixture", replayer.sent == len(replay_body),
+                    f"sent {replayer.sent} of {len(replay_body)}, skipped {replayer.skipped}")
+            t.check("live messages remain recorded", len(live_platform_rows) >= 2,
+                    f"recorded {len(live_platform_rows)} live platform rows")
+        finally:
+            output = stop_recorder(process)
+            if any(not check.ok for check in t.checks):
+                print(output, end="")
 
 
 @suite.test("E-T9", "Camera and 3D", requirement="E-R6")
