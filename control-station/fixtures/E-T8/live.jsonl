@@ -1,0 +1,1 @@
+{"t_s":0.0,"topic":"platform/state","msg":{"tilt_x_deg":1.9,"tilt_y_deg":-0.4,"applied_tilt_x_deg":2,"applied_tilt_y_deg":-0.5,"source":"glove","mode":"glove","mode_button_presses":1,"is_e_stop":false,"is_laptop_connected":true,"is_glove_connected":true,"fault":"none"}}
