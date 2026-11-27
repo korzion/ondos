@@ -62,3 +62,13 @@ test("no path from a cell without a path, outside the grid or on a map of anothe
     // A map that does not fit the example maze: from (1, 0) with 3 steps the next cell (1, 1) has 1, not 2.
     assert.deepEqual(pathToExit(EXAMPLE_MAZE, [[3, 0], [3, 1]], { row: 1, col: 0 }), []);
 });
+
+test("no path, and no error, on a map of another size or a maze with an open outer border", () => {
+    // The 2 x 2 example map on the 3 x 3 open room, and the other way round.
+    assert.deepEqual(pathToExit(OPEN_ROOM, EXAMPLE_STEPS, { row: 0, col: 0 }), []);
+    assert.deepEqual(pathToExit(EXAMPLE_MAZE, OPEN_ROOM_STEPS, { row: 0, col: 0 }), []);
+    // Cell (0, 0) of the example maze without its south wall: the step south would leave the grid.
+    const open_border: MazeGeometry = { ...EXAMPLE_MAZE, walls: [[10, 14], [9, 3]] };
+    assert.deepEqual(pathToExit(open_border, [[3, 0], [2, 1]], { row: 0, col: 0 }),
+        pathToExit(EXAMPLE_MAZE, EXAMPLE_STEPS, { row: 0, col: 0 }));
+});
