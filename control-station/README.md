@@ -68,6 +68,22 @@ npm run recorder -- <broker-url> # another broker
 
 It writes one IF-09 JSONL file per game into `recordings/` in this folder by default. The recording folder and tail duration come from the Control Station variable spec and applied settings (`recording_folder` and `recording_tail_s`). The tail defaults to 2 seconds.
 
+## Station: the background programs in one terminal
+
+GameManager, the Recorder and the shared replay tool (`listen` mode, for the app's replay controls) run outside the app. Start the broker first, activate the Python venv (the replay tool is Python), then from this folder:
+
+```
+npm run station
+```
+
+- Each line starts with the program's name: `[game-manager]`, `[recorder]`, `[replay]`.
+- Each program is its own process: if one stops, the others go on, and closing the app stops none of them (E-R5).
+- Ctrl+C stops all three.
+- **Keep this terminal open during a game.** Closing it stops the programs, and so the recording too.
+- The app is started separately (`npm run dev` or the built app).
+- The same command works on Windows and Linux (E-R12).
+- The programs connect to the broker at start and stop if it is not there; start the broker first.
+
 ## Tests and Dec 4 demo
 
 Every test has its inputs in `fixtures/<TEST-ID>/` (input files + a README saying what can be edited) and runs with
