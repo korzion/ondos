@@ -22,7 +22,7 @@ The internal folder layout of this module is decided by the module team.
 
 ## Desktop app
 
-The Electron app: the main process is in `src/main/`, the UI in `src/renderer/`. The UI imports `shared/` from the repository root (`@shared/bus/bus`, `@shared/topics`), so both folders need their packages; otherwise typecheck and build fail with `mqtt` and `ajv` not found:
+The Electron app: the main process is in `src/main/`, the UI in `src/renderer/`. The UI imports `shared/` from the repository root (`@shared/bus/bus`, `@shared/topics`, `@shared/mazes/mazes`), so both folders need their packages; otherwise typecheck and build fail with `mqtt` and `ajv` not found:
 
 ```
 npm ci              # in the repository root: mqtt and ajv for shared/
@@ -47,6 +47,10 @@ mosquitto -c ../shared/bus/mosquitto.conf
 ```
 
 On Ubuntu 24.04 the AppImage needs `sudo apt install libfuse2t64`, or run it with `--appimage-extract-and-run`.
+
+### Maze view
+
+The Start tab's right column shows the maze, north (+y) up: walls, the start cell, the exit marker (green), the path to the exit (yellow) and the ball (a grey ring when it is lost or older than 200 ms). A wall hit (`vision/event`) turns that wall red for 1 s. The path follows `plan/distance_map` from the `ball_cell` of `plan/route` with the shared maze helper (`shared/mazes/mazes.ts`), and is drawn only while the maze, the map and the route have the same `maze_id`. It redraws at 20 Hz while the Start tab is open (`maze_view_rate_hz` follows with the cs variables, #142).
 
 ## GameManager
 
