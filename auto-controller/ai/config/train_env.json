@@ -1,0 +1,35 @@
+{
+  "$comment": "TrainEnv configuration (IF-08). A randomised parameter has its nominal value and the range it is drawn from at reset.",
+
+  "max_tilt_deg": {"value": 4.0, "note": "STARTING VALUE (mechanical design: about ±4 deg). Actual value comes from platform/variables_spec (Module A)."},
+  "max_tilt_speed_deg_s": {"value": 60.0, "note": "STARTING VALUE. Actual value comes from platform/variables_spec (Module A)."},
+
+  "plate_width_mm": {"value": 208.0, "note": "STARTING VALUE (mechanical design v4). Actual value comes from measuring the maze plate."},
+  "plate_height_mm": {"value": 208.0, "note": "STARTING VALUE (mechanical design v4). Actual value comes from measuring the maze plate."},
+  "ball_mass_g": {"value": 11.3, "note": "STARTING VALUE (mechanical design). Actual value comes from weighing the ball."},
+
+  "friction_coeff": {"nominal": 0.003, "random_min": 0.002, "random_max": 0.005, "note": "Rolling resistance coefficient. STARTING VALUE. Actual value comes from fitting to recordings."},
+  "restitution": {"nominal": 0.3, "random_min": 0.24, "random_max": 0.36, "note": "STARTING VALUE. Actual value comes from fitting to recordings."},
+  "latency_ms": {"nominal": 100.0, "random_min": 70.0, "random_max": 130.0, "note": "STARTING VALUE. Actual value comes from measuring the delay (IF-06 delay budget)."},
+  "noise_std_mm": {"nominal": 1.0, "random_min": 0.5, "random_max": 2.0},
+  "tilt_offset_deg": {"nominal": 0.0, "random_min": -0.5, "random_max": 0.5},
+  "step_dt_s": {"nominal": 0.0333333, "random_min": 0.0166667, "random_max": 0.0333333, "note": "STARTING VALUE for nominal. Actual value comes from Vision's camera frame rate."},
+  "start_offset_cells": {"nominal": 0.0, "random_min": -0.25, "random_max": 0.25},
+
+  "filter_noise": {"value": 1.0, "note": "STARTING VALUE (Vision default). Actual value comes from Vision's filter_noise in vision/variables_spec (C.7)."},
+  "lost_timeout_ms": {"value": 200.0, "note": "Design value (C.7). Actual value comes from Vision's lost_timeout_ms in vision/variables_spec."},
+  "occlusion_rate_per_s": {"value": 0.5, "note": "Occlusions started per second while the ball is near a wall. STARTING VALUE. Actual value comes from counting is_predicted in recordings."},
+  "occlusion_wall_gap_mm": {"value": 3.0, "note": "Gap between ball and wall face that counts as near a wall. STARTING VALUE. Actual value comes from recordings."},
+  "occlusion_min_ms": {"value": 30.0, "note": "Shortest occlusion (about one camera frame). STARTING VALUE. Actual value comes from recordings."},
+  "occlusion_max_ms": {"value": 300.0, "note": "Longest occlusion; above lost_timeout_ms the ball is lost. STARTING VALUE. Actual value comes from recordings."},
+  "frame_drop_chance": {"value": 0.01, "note": "Chance per step that the camera drops a frame, so the step lasts two frame periods. STARTING VALUE. Actual value comes from Vision's frame timing."},
+
+  "time_limit_s": {"value": 120.0},
+  "exit_hold_frames": {"value": 15, "note": "STARTING VALUE. Actual value comes from GameManager's exit_hold_frames (Module E)."},
+  "wall_hit_min_speed_mm_s": {"value": 30.0, "note": "STARTING VALUE. Actual value comes from Vision's wall_hit_min_speed_mm_s (Module C)."},
+
+  "progress_reward_per_mm": {"value": 0.01, "note": "STARTING VALUE. Actual value comes from tuning in training."},
+  "time_penalty_per_s": {"value": 0.1, "note": "STARTING VALUE. Actual value comes from tuning in training."},
+  "wall_hit_penalty": {"value": 0.1, "note": "STARTING VALUE. Actual value comes from tuning in training."},
+  "tilt_change_penalty_per_deg2": {"value": 0.001, "note": "STARTING VALUE. Actual value comes from tuning in training."}
+}
