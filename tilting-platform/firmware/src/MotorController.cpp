@@ -43,28 +43,37 @@ bool MotorController::begin(int servo_x_pin,
   pwm_writer_ = writer;
   pwm_writer_ctx_ = writer_context;
 
-#ifdef ARDUINO
-  if (pwm_writer_ == nullptr) {
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-    const bool ok_x = ledcAttach(servo_x_pin_, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
-    const bool ok_y = ledcAttach(servo_y_pin_, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
-    if (!ok_x || !ok_y) {
-      initialized_ = false;
-      stopped_ = true;
-      return false;
-    }
-#else
-    ledcSetup(LEDC_CHANNEL_X, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
-    ledcAttachPin(servo_x_pin_, LEDC_CHANNEL_X);
-    ledcSetup(LEDC_CHANNEL_Y, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
-    ledcAttachPin(servo_y_pin_, LEDC_CHANNEL_Y);
-#endif
+  if (!attachPwmHardware()) {
+    initialized_ = false;
+    stopped_ = true;
+    return false;
   }
-#endif
 
   initialized_ = true;
   stopped_ = false;
   applyOutputs(0.0f, 0.0f);
+  return true;
+}
+
+bool MotorController::attachPwmHardware() {
+#ifdef ARDUINO
+  if (pwm_writer_ != nullptr) {
+    return true;
+  }
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  const bool ok_x = ledcAttach(servo_x_pin_, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
+  const bool ok_y = ledcAttach(servo_y_pin_, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
+  return ok_x && ok_y;
+#else
+  const double freq_x = ledcSetup(LEDC_CHANNEL_X, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
+  const double freq_y = ledcSetup(LEDC_CHANNEL_Y, SERVO_PWM_FREQ_HZ, SERVO_PWM_RESOLUTION_BITS);
+  if (freq_x <= 0.0 || freq_y <= 0.0) {
+    return false;
+  }
+  ledcAttachPin(servo_x_pin_, LEDC_CHANNEL_X);
+  ledcAttachPin(servo_y_pin_, LEDC_CHANNEL_Y);
+#endif
+#endif
   return true;
 }
 
@@ -130,15 +139,29 @@ bool MotorController::isValidCalibration(const ServoCalibration& cal) {
   if (!std::isfinite(cal.us_per_deg) || cal.us_per_deg <= 0.0f) {
     return false;
   }
-  if (cal.axis_sign != 1.0f && cal.axis_sign != -1.0f) {
+  if (!std::isfinite(cal.max_mechanical_tilt_deg) || cal.max_mechanical_tilt_deg <= 0.0f) {
     return false;
   }
   return true;
 }
 
+float MotorController::clampTiltDeg(float tilt_deg, const ServoCalibration& cal) {
+  const float sign = cal.is_inverted ? -1.0f : 1.0f;
+  const float deg_a =
+      sign * (static_cast<float>(cal.min_pulse_us) - static_cast<float>(cal.neutral_pulse_us)) /
+      cal.us_per_deg;
+  const float deg_b =
+      sign * (static_cast<float>(cal.max_pulse_us) - static_cast<float>(cal.neutral_pulse_us)) /
+      cal.us_per_deg;
+  const float min_deg = std::fmax(-cal.max_mechanical_tilt_deg, std::fmin(deg_a, deg_b));
+  const float max_deg = std::fmin(cal.max_mechanical_tilt_deg, std::fmax(deg_a, deg_b));
+  return std::fmin(max_deg, std::fmax(min_deg, tilt_deg));
+}
+
 uint32_t MotorController::tiltToPulseUs(float tilt_deg, const ServoCalibration& cal) {
+  const float sign = cal.is_inverted ? -1.0f : 1.0f;
   const float raw_us =
-      static_cast<float>(cal.neutral_pulse_us) + (cal.axis_sign * tilt_deg * cal.us_per_deg);
+      static_cast<float>(cal.neutral_pulse_us) + (sign * tilt_deg * cal.us_per_deg);
   if (raw_us <= static_cast<float>(cal.min_pulse_us)) {
     return cal.min_pulse_us;
   }
@@ -168,10 +191,10 @@ void MotorController::writePulseUs(int pin, uint32_t pulse_us) {
 }
 
 void MotorController::applyOutputs(float tilt_x_deg, float tilt_y_deg) {
-  current_tilt_x_deg_ = tilt_x_deg;
-  current_tilt_y_deg_ = tilt_y_deg;
-  last_pulse_x_us_ = tiltToPulseUs(tilt_x_deg, cal_x_);
-  last_pulse_y_us_ = tiltToPulseUs(tilt_y_deg, cal_y_);
+  current_tilt_x_deg_ = clampTiltDeg(tilt_x_deg, cal_x_);
+  current_tilt_y_deg_ = clampTiltDeg(tilt_y_deg, cal_y_);
+  last_pulse_x_us_ = tiltToPulseUs(current_tilt_x_deg_, cal_x_);
+  last_pulse_y_us_ = tiltToPulseUs(current_tilt_y_deg_, cal_y_);
   writePulseUs(servo_x_pin_, last_pulse_x_us_);
   writePulseUs(servo_y_pin_, last_pulse_y_us_);
 }
