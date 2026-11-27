@@ -1,3 +1,4 @@
+import math
 import random
 import statistics
 
@@ -151,3 +152,57 @@ def test_a_missing_detection_with_an_earlier_timestamp_loses_the_ball():
     track_along_x(ball_filter, TRACKED_FRAMES)
     estimate = ball_filter.update(None, None, 0.0)
     assert (estimate.is_visible, estimate.is_predicted) == (False, False)
+
+
+BAD_SETTINGS = [0.0, -1.0, math.nan, math.inf]
+
+
+@pytest.mark.parametrize("bad_value", BAD_SETTINGS)
+def test_a_filter_is_not_made_with_a_setting_that_is_not_a_positive_number(bad_value):
+    with pytest.raises(ValueError, match="filter_noise"):
+        BallFilter(bad_value, LOST_TIMEOUT_MS)
+    with pytest.raises(ValueError, match="lost_timeout_ms"):
+        BallFilter(FILTER_NOISE, bad_value)
+
+
+@pytest.mark.parametrize("bad_value", BAD_SETTINGS)
+def test_a_setting_that_is_not_a_positive_number_is_refused_and_the_old_one_stays(bad_value):
+    ball_filter = new_filter()
+    with pytest.raises(ValueError, match="filter_noise"):
+        ball_filter.filter_noise = bad_value
+    with pytest.raises(ValueError, match="lost_timeout_ms"):
+        ball_filter.lost_timeout_ms = bad_value
+    assert (ball_filter.filter_noise, ball_filter.lost_timeout_ms) == (FILTER_NOISE, LOST_TIMEOUT_MS)
+
+
+def test_a_changed_timeout_is_used_from_the_next_frame():
+    ball_filter = new_filter()
+    track_along_x(ball_filter, TRACKED_FRAMES)
+    ball_filter.lost_timeout_ms = 62.5  # 2 frames
+    assert [miss_frames(ball_filter, frame, frame).is_visible for frame in (40, 41)] == [True, False]
+
+
+def test_reset_forgets_the_ball():
+    ball_filter = new_filter()
+    track_along_x(ball_filter, TRACKED_FRAMES)
+    ball_filter.reset()
+    assert ball_filter.update(None, None, 40 * FRAME_S) == (0.0, 0.0, 0.0, 0.0, False, False)
+    assert ball_filter.update(-50.0, 30.0, 41 * FRAME_S) == (-50.0, 30.0, 0.0, 0.0, True, False)
+
+
+@pytest.mark.parametrize("bad_input", [
+    (math.nan, 0.0, 40 * FRAME_S),
+    (0.0, math.inf, 40 * FRAME_S),
+    (80.0, -20.0, math.nan),
+    (None, None, math.inf),
+    (80.0, None, 40 * FRAME_S),
+    (None, -20.0, 40 * FRAME_S),
+], ids=["x is nan", "y is inf", "time is nan", "time is inf", "y is missing", "x is missing"])
+def test_a_bad_input_is_refused_and_changes_nothing(bad_input):
+    ball_filter, twin = new_filter(), new_filter()
+    track_along_x(ball_filter, TRACKED_FRAMES)
+    track_along_x(twin, TRACKED_FRAMES)
+    with pytest.raises(ValueError):
+        ball_filter.update(*bad_input)
+    next_frame = (SPEED_MM_S * 40 * FRAME_S, -20.0, 40 * FRAME_S)
+    assert ball_filter.update(*next_frame) == twin.update(*next_frame)

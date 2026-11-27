@@ -1,6 +1,8 @@
 """BallFilter: the ball filter of Vision (C.5 BallTracker), also used by the training environment (IF-08)."""
 from __future__ import annotations
 
+import math
+
 from shared.ball_filter.axis_kalman import PROCESS_NOISE_MM2_PER_S3, AxisKalman
 from shared.ball_filter.ball_estimate import BallEstimate
 
@@ -19,13 +21,38 @@ class BallFilter:
         self.lost_timeout_ms = lost_timeout_ms
         self._axis_x = AxisKalman()
         self._axis_y = AxisKalman()
+        self.reset()
+
+    @property
+    def filter_noise(self) -> float:
+        """Smoothing of the filter (C.7): lower = smoother, higher = faster reaction."""
+        return self._filter_noise
+
+    @filter_noise.setter
+    def filter_noise(self, filter_noise: float) -> None:
+        self._filter_noise = _positive_number(filter_noise, "filter_noise")
+
+    @property
+    def lost_timeout_ms(self) -> float:
+        """Time without a detection before is_visible = false (C.7)."""
+        return self._lost_timeout_ms
+
+    @lost_timeout_ms.setter
+    def lost_timeout_ms(self, lost_timeout_ms: float) -> None:
+        self._lost_timeout_ms = _positive_number(lost_timeout_ms, "lost_timeout_ms")
+
+    def reset(self) -> None:
+        """Forget the ball (new game, new training episode); the settings stay."""
         self._is_tracking = False
         self._last_update_s = 0.0
         self._last_detection_s = 0.0
         self._lost_estimate = NEVER_SEEN
 
     def update(self, meas_x_mm: float | None, meas_y_mm: float | None, t_s: float) -> BallEstimate:
-        """Estimate for the frame taken at t_s; the measurement is None when the ball was not detected."""
+        """Estimate for the frame taken at t_s; the measurement is None when the ball was not detected.
+
+        Raises ValueError for a non-finite value or half a measurement, before the filter changes."""
+        _require_valid_input(meas_x_mm, meas_y_mm, t_s)
         if meas_x_mm is None or meas_y_mm is None:
             estimate = self._bridge_or_lose(t_s)
         else:
@@ -74,3 +101,17 @@ class BallFilter:
     def _estimate(self, is_predicted: bool) -> BallEstimate:
         return BallEstimate(self._axis_x.position_mm, self._axis_y.position_mm,
                             self._axis_x.velocity_mm_s, self._axis_y.velocity_mm_s, True, is_predicted)
+
+
+def _require_valid_input(meas_x_mm: float | None, meas_y_mm: float | None, t_s: float) -> None:
+    if (meas_x_mm is None) != (meas_y_mm is None):
+        raise ValueError("a measurement needs both meas_x_mm and meas_y_mm, or neither")
+    values = (t_s,) if meas_x_mm is None else (meas_x_mm, meas_y_mm, t_s)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError(f"non-finite ball filter input {(meas_x_mm, meas_y_mm, t_s)}")
+
+
+def _positive_number(value: float, name: str) -> float:
+    if not (math.isfinite(value) and value > 0.0):
+        raise ValueError(f"{name} must be a finite number > 0, got {value!r}")
+    return float(value)
