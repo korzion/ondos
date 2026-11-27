@@ -78,11 +78,7 @@ class BallFilter:
             self._axis_y.start(meas_y_mm)
             self._is_tracking = True
         self._last_detection_s = t_s
-        estimate = self._estimate(is_predicted=False)
-        # ASSUMPTION: the "last known position" of a lost ball (vision/ball) is the estimate of the last frame with
-        # a detection, not the position predicted and held since then.
-        self._lost_estimate = BallEstimate(estimate.x_mm, estimate.y_mm, 0.0, 0.0, False, False)
-        return estimate
+        return self._estimate(is_predicted=False)
 
     def _bridge_or_lose(self, t_s: float) -> BallEstimate:
         if self._is_predictable(t_s):
@@ -90,8 +86,13 @@ class BallFilter:
             return self._estimate(is_predicted=True)
         if self._track_continues(t_s):
             return self._held_estimate()
-        # ASSUMPTION: only a new detection brings a lost ball back, also when lost_timeout_ms is raised meanwhile.
-        self._is_tracking = False
+        if self._is_tracking:
+            # ASSUMPTION: the "last known position" of a lost ball (vision/ball) is where the ball was predicted and
+            # held last, so the position does not jump at the loss. Only a new detection brings a lost ball back,
+            # also when lost_timeout_ms is raised meanwhile.
+            self._lost_estimate = BallEstimate(self._axis_x.position_mm, self._axis_y.position_mm,
+                                               0.0, 0.0, False, False)
+            self._is_tracking = False
         return self._lost_estimate
 
     def _is_predictable(self, t_s: float) -> bool:

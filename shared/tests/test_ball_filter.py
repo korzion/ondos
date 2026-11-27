@@ -166,11 +166,20 @@ def test_the_timeout_counts_from_the_last_detection_and_not_from_the_last_frame(
     assert [estimate.is_visible for estimate in estimates] == [True] * 15 + [False]
 
 
-def test_a_lost_ball_rests_at_the_last_detected_position():
+def test_a_lost_ball_rests_where_it_was_held():
     ball_filter = new_filter()
-    detected = track_along_x(ball_filter, TRACKED_FRAMES)
-    lost = miss_frames(ball_filter, 40, LOST_FRAME)
-    assert lost == (detected.x_mm, detected.y_mm, 0.0, 0.0, False, False)
+    track_along_x(ball_filter, TRACKED_FRAMES)
+    held = miss_frames(ball_filter, 40, LOST_FRAME - 1)
+    lost = [miss_frames(ball_filter, frame, frame) for frame in (LOST_FRAME, LOST_FRAME + 1)]
+    assert lost == [(held.x_mm, held.y_mm, 0.0, 0.0, False, False)] * 2
+
+
+def test_a_ball_lost_before_the_prediction_time_rests_at_the_last_predicted_position():
+    ball_filter = BallFilter(FILTER_NOISE, 62.5)  # 2 frames, shorter than MAX_PREDICTION_MS
+    track_along_x(ball_filter, TRACKED_FRAMES)
+    predicted = miss_frames(ball_filter, 40, 40)
+    lost = miss_frames(ball_filter, 41, 41)
+    assert lost == (predicted.x_mm, predicted.y_mm, 0.0, 0.0, False, False)
 
 
 def test_a_lost_ball_stays_lost_when_the_timeout_is_raised():
