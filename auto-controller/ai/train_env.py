@@ -19,7 +19,7 @@ import numpy as np
 from gymnasium import spaces
 
 from ai.episode_params import EpisodeParams, nominal_episode_params, random_episode_params
-from ai.plate_world import EAST, NORTH, PHYSICS_HZ, SOUTH, WEST, PlateWorld
+from ai.plate_world import AXES, EAST, MS_PER_S, NORTH, PHYSICS_HZ, SOUTH, WEST, PlateWorld
 from ai.simulated_vision import SimulatedVision
 from ai.tilt_actuator import TiltActuator
 from ai.train_env_config import TrainEnvConfig, load_train_env_config
@@ -30,14 +30,12 @@ from shared.mazes.maze_grid import Cell
 from shared.mazes.route import ROUTE_INVALID, ROUTE_VALID
 
 MAZES_DIR = Path(__file__).resolve().parents[2] / "shared" / "mazes"
-MS_PER_S = 1000.0
 RESET_OPTIONS = frozenset({"maze", "randomize"})  # IF-08 reset options
 FLOAT_FIELDS = ("x_mm", "y_mm", "vx_mm_s", "vy_mm_s", "tilt_x_deg", "tilt_y_deg",
                 "applied_tilt_x_deg", "applied_tilt_y_deg")
 BOOL_FIELDS = ("is_visible", "is_predicted")
 BOOL_VALUE_COUNT = 2  # a bool field is 0 or 1 in the observation space
 NO_ROUTE = Route(ROUTE_INVALID, None, (), None)  # plan/route: invalid = no valid maze or ball not visible (C.5)
-AXES = 2  # x and y (D4)
 FIRST_FRAME_DT_S = 0.0  # the frame at reset has no previous frame
 FRAMES_IN_A_DROP = 2  # a dropped camera frame makes the step last two frame periods
 
@@ -54,6 +52,7 @@ class TrainEnv(gymnasium.Env):
         self.observation_space = _observation_space()
         self._world = PlateWorld()
         self._vision = SimulatedVision(self.config)
+        self._has_episode = False  # step() needs reset() first (Gymnasium API)
 
     # ------------------------------------------------------------------ IF-08
 
@@ -76,6 +75,7 @@ class TrainEnv(gymnasium.Env):
         self._see_ball(FIRST_FRAME_DT_S)
         self._route = self._plan_route()
         self._route_distance_mm = self._distance_along_route_mm()
+        self._has_episode = True
         return self._observation(), self._reset_info()
 
     def step(self, action: np.ndarray) -> tuple[dict, float, bool, bool, dict]:
@@ -84,6 +84,8 @@ class TrainEnv(gymnasium.Env):
         While the ball is not visible the route is invalid, as in plan/route: target_points_mm is empty and
         distance_to_exit_cells is None. At runtime the controller then sends nothing (D.5) and the platform's
         command timeout levels the plate, so the trainer's wrapper (#67) decides the action for such a step."""
+        if not self._has_episode:
+            raise RuntimeError("call reset() before step()")
         applied_deg = self._limited_action(action)
         self._actuator.command(self._time_s, applied_deg)
         frame_dt_s, wall_hits = self._run_frame_period()
@@ -108,7 +110,21 @@ class TrainEnv(gymnasium.Env):
             maze = self._random_maze_file()
         if not maze.validate():
             raise ValueError(f"maze {maze.maze_id} is not valid")
+        if not self._fits_on_plate(maze):
+            raise ValueError(f"maze {maze.maze_id} does not fit on the {self.config.plate_width_mm} x "
+                             f"{self.config.plate_height_mm} mm plate")
         return maze
+
+    def _fits_on_plate(self, maze: MazeGrid) -> bool:
+        """The maze with its outer walls lies on the plate, which is centred on the board origin (IF-04)."""
+        half_wall_mm = maze.wall_thickness_mm / 2.0
+        width_mm, height_mm = maze.cols * maze.cell_size_mm, maze.rows * maze.cell_size_mm
+        x_edges_mm = (maze.origin_x_mm - half_wall_mm, maze.origin_x_mm + width_mm + half_wall_mm)
+        y_edges_mm = (maze.origin_y_mm - half_wall_mm, maze.origin_y_mm + height_mm + half_wall_mm)
+        half_width_mm = self.config.plate_width_mm / 2.0
+        half_height_mm = self.config.plate_height_mm / 2.0
+        return (all(abs(x_mm) <= half_width_mm for x_mm in x_edges_mm)
+                and all(abs(y_mm) <= half_height_mm for y_mm in y_edges_mm))
 
     def _random_maze_file(self) -> MazeGrid:
         paths = sorted(MAZES_DIR.glob("*.json"))
@@ -154,7 +170,8 @@ class TrainEnv(gymnasium.Env):
         # drops a frame, so the AI gets its next observation, and acts again, two frame periods later.
         frames = FRAMES_IN_A_DROP if self.np_random.random() < self.config.frame_drop_chance else 1
         physics_steps = frames * self._substeps
-        # The real plate is off by a small offset from what the platform measures (IF-08).
+        # ASSUMPTION: tilt_offset_deg (IF-08 table) is a fixed error between the tilt the platform measures
+        # and the real plate, so the physics gets the offset and the observation does not.
         tilt_offset_deg = np.array(self._params.tilt_offset_deg)
         wall_hits = []
         for _ in range(physics_steps):
@@ -285,6 +302,8 @@ def _checked_options(options: dict | None) -> dict:
     unknown = set(options) - RESET_OPTIONS
     if unknown:
         raise ValueError(f"unknown reset option(s) {sorted(unknown)}; known: {sorted(RESET_OPTIONS)}")
+    if not isinstance(options.get("randomize", True), bool):
+        raise ValueError(f"randomize must be true or false, got {options['randomize']!r}")
     return options
 
 

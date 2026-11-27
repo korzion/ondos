@@ -13,14 +13,13 @@ import math
 
 import numpy as np
 
+from ai.plate_world import AXES, MS_PER_S
 from ai.train_env_config import TrainEnvConfig
 from ai.wall_segment import WallSegment
 from shared.ball_filter import BallEstimate, BallFilter
 from shared.mazes import MazeGrid
 
-MS_PER_S = 1000.0
 NOT_HIDDEN_S = -math.inf  # hidden-until time when no occlusion is running
-AXES = 2  # x and y (D4)
 
 
 class SimulatedVision:
