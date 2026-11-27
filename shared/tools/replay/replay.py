@@ -105,6 +105,7 @@ class Replayer:
         self.online: dict[str, bool] = {}
         self._paused = threading.Event()
         self._stop = threading.Event()
+        self._finished = threading.Event()
         self.sent = 0
         self.skipped = 0
 
@@ -129,7 +130,17 @@ class Replayer:
     def is_replayable(topic: str) -> bool:
         return topic not in NEVER_REPLAYED and not topic.startswith(NEVER_REPLAYED_PREFIXES)
 
+    def is_finished(self) -> bool:
+        """True once run() has returned: the file ended, stop() was called or the file was unreadable."""
+        return self._finished.is_set()
+
     def run(self) -> None:
+        try:
+            self._play()
+        finally:
+            self._finished.set()
+
+    def _play(self) -> None:
         lines = read_jsonl(self.path)
         if not lines or lines[0].get("type") != "header":
             raise ValueError(f"{self.path}: first line is not a recording header")
@@ -188,7 +199,7 @@ def listen(recordings: Path, host: str, port: int) -> None:
         if msg.get("writer") != "cs_app" or msg.get("cmd") != "replay":
             return
         current = state["replayer"]
-        if current is not None and not current._stop.is_set():
+        if current is not None and not current.is_finished():
             return  # one replay at a time
         r = Replayer(recordings / msg["file"], msg["speed"], host, port)
         state["replayer"] = r
