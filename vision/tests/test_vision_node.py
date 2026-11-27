@@ -17,6 +17,7 @@ from vision.tests.message_helpers import with_envelope
 from vision.tests.test_ball_tracker import (
     BALL_DIAMETER_MM,
     POSITION_TOLERANCE_MM,
+    ROLLING_END_MM,
     ROLLING_SPEED_MM_S,
     ball_variables,
     rolling_ball,
@@ -24,7 +25,7 @@ from vision.tests.test_ball_tracker import (
 )
 from vision.tests.test_path_planner import planner_with_example_maze
 from vision.vision_config import load_vision_config
-from vision.vision_node import CAMERA_RETRY_PERIOD_S, VisionNode
+from vision.vision_node import CAMERA_LOST_TIMEOUT_S, CAMERA_RETRY_PERIOD_S, VisionNode
 from vision.vision_variables import CONFIG_KEY, VisionVariables
 
 SPEC_TOPIC = T.variables_spec(CONFIG_KEY)
@@ -290,6 +291,46 @@ def test_route_is_invalid_while_the_ball_is_not_visible(tmp_path):
     for route in routes:
         assert (route["maze_id"], route["status"], route["ball_cell"]) == ("example-2x2", "invalid", None)
         assert (route["target_points_mm"], route["distance_to_exit_cells"]) == ([], None)
+
+
+def run_camera(grabber: FakeGrabber, run_time_s: float, path_planner: PathPlanner | None = None) -> FakeBus:
+    """Run a VisionNode on a camera for some time; the bus holds what it published."""
+    bus = FakeBus()
+    node = VisionNode(ball_variables(), grabber, bus, make_calibrator(), path_planner=path_planner)
+    thread = threading.Thread(target=node.run, daemon=True)
+    thread.start()
+    time.sleep(run_time_s)
+    node.stop()
+    thread.join(timeout=2)
+    return bus
+
+
+def test_lost_camera_keeps_publishing_the_ball_as_not_visible():
+    """C.8: a camera that gives 3 frames of a rolling ball and then nothing is lost after 1 s."""
+    seen_frames = rolling_ball(load_vision_config())
+    time_as_lost_s = 0.5
+    run_time_s = len(seen_frames) * FRAME_PERIOD_S + CAMERA_LOST_TIMEOUT_S + time_as_lost_s
+    bus = run_camera(FakeGrabber(clip_frames=seen_frames), run_time_s, planner_with_example_maze())
+    balls, routes = bus.messages(T.VISION_BALL), bus.messages(T.PLAN_ROUTE)
+    lost_balls = balls[len(seen_frames):]
+    assert 0.6 * time_as_lost_s / FRAME_PERIOD_S < len(lost_balls) < 1.2 * time_as_lost_s / FRAME_PERIOD_S
+    assert balls[len(seen_frames) - 1]["vx_mm_s"] > ROLLING_SPEED_MM_S / 2
+    for ball in lost_balls:  # at rest, where it was seen last
+        assert (ball["x_mm"], ball["y_mm"]) == pytest.approx(ROLLING_END_MM, abs=POSITION_TOLERANCE_MM)
+        assert (ball["vx_mm_s"], ball["vy_mm_s"], ball["meas_x_mm"], ball["meas_y_mm"]) == (0.0, 0.0, None, None)
+        assert (ball["is_visible"], ball["is_predicted"], ball["is_on_exit"]) == (False, False, False)
+        assert 0.0 <= ball["frame_age_ms"] < 1.0
+    assert [route["ball_seq"] for route in routes] == [ball["seq"] for ball in balls]
+    assert [route["status"] for route in routes[len(seen_frames):]] == ["invalid"] * len(lost_balls)
+
+
+@pytest.mark.parametrize("frame_count", [0, 2])
+def test_lost_camera_publishes_no_ball_before_the_markers_were_seen(frame_count):
+    """Neither for a camera that never gave a frame, nor for one that only gave frames without the markers."""
+    without_markers = np.full((480, 640, 3), GREY, dtype=np.uint8)
+    bus = run_camera(FakeGrabber(clip_frames=[without_markers] * frame_count), CAMERA_LOST_TIMEOUT_S + 0.3)
+    assert len(bus.messages(T.VISION_STATUS)) == 2  # at the start and 1 s later: the frame loop is still running
+    assert bus.messages(T.VISION_BALL) == []
 
 
 def test_no_route_is_published_without_a_maze(tmp_path):

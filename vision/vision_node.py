@@ -6,6 +6,7 @@ parts) and at the command handlers (read_maze, calibrate_camera).
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import queue
 import threading
@@ -32,6 +33,9 @@ log = logging.getLogger(__name__)
 STATUS_PERIOD_S = 1.0        # vision/status is published at 1 Hz (IF-04)
 CAMERA_LOST_TIMEOUT_S = 1.0  # no frame for 1 s: the camera is lost (C.8)
 CAMERA_RETRY_PERIOD_S = 1.0  # a lost camera is opened again every 1 s (C.8)
+# ASSUMPTION (#47): C.8 keeps publishing vision/ball while the camera is lost, but gives no rate. The lowest camera
+# frame rate is used (C.4: 30 fps). STARTING VALUE.
+LOST_CAMERA_BALL_PERIOD_S = 1.0 / 30.0
 NO_FRAME_WAIT_S = 0.01       # short pause when no frame came, so a missing camera does not use a full CPU core
 ENVELOPE_FIELDS = frozenset({"timestamp_s", "seq", "version", "writer"})
 NO_MAZE_MATCH = "none"       # vision/status maze_match while no maze file matches
@@ -55,6 +59,8 @@ class VisionNode:
         # The planner has no maze until MazeReader (#48) builds one; a planner with a maze can be given instead.
         self._path_planner = PathPlanner() if path_planner is None else path_planner
         self._has_seen_markers = False
+        self._last_ball: BallState | None = None
+        self._next_lost_ball_s = 0.0
         self._last_frame: np.ndarray | None = None
         self._game_state_lock = threading.Lock()
         self._game_state: dict | None = None
@@ -213,17 +219,31 @@ class VisionNode:
         is_retry_due = now - self._last_open_attempt_s >= CAMERA_RETRY_PERIOD_S
         if self._clip_dir is None and not self._is_camera_ok(now) and is_retry_due:
             self._open_camera()
+        self._publish_lost_ball_if_due(now)
         time.sleep(NO_FRAME_WAIT_S)
 
     # ------------------------------------------------------------ ball and route
     def _publish_ball_sample(self, ball: BallState, t_arrival_s: float) -> None:
         """vision/ball for the frame that arrived at t_arrival_s, then the plan/route that answers it."""
+        self._last_ball = ball
         if self._calibrator.is_calibrated:
             self._has_seen_markers = True
         if not self._has_seen_markers:
             return  # IF-04: vision/ball is not published until the markers have been seen once
         ball_msg = self._bus.publish(T.VISION_BALL, _ball_fields(ball, t_arrival_s))
         self._publish_route(ball, ball_msg["seq"])
+
+    def _publish_lost_ball_if_due(self, now: float) -> None:
+        """C.8: while the camera is lost, vision/ball is still published, with is_visible = false."""
+        if self._is_camera_ok(now) or self._last_ball is None or now < self._next_lost_ball_s:
+            return
+        # The next time follows the planned one, not this late one, so the mean rate is right although the loop
+        # only looks every NO_FRAME_WAIT_S. Only after a pause of a period or more the times start again from now.
+        is_on_schedule = now - self._next_lost_ball_s < LOST_CAMERA_BALL_PERIOD_S
+        self._next_lost_ball_s = (self._next_lost_ball_s if is_on_schedule else now) + LOST_CAMERA_BALL_PERIOD_S
+        # ASSUMPTION (#47): frame_age_ms has no meaning without a frame. The sample gets the time now as its
+        # arrival time, so its frame_age_ms is 0.
+        self._publish_ball_sample(_lost_ball(self._last_ball), now)
 
     def _publish_route(self, ball: BallState, ball_seq: int) -> None:
         """plan/route for the ball sample that was published as vision/ball with this seq."""
@@ -267,6 +287,12 @@ def _ball_fields(ball: BallState, t_arrival_s: float) -> dict:
         "meas_x_mm": ball.meas_x_mm,
         "meas_y_mm": ball.meas_y_mm,
     }
+
+
+def _lost_ball(last_ball: BallState) -> BallState:
+    """The ball while the camera is lost: not visible and at rest, at its last known position (IF-04)."""
+    return dataclasses.replace(last_ball, vx_mm_s=0.0, vy_mm_s=0.0, is_visible=False, is_predicted=False,
+                               meas_x_mm=None, meas_y_mm=None)
 
 
 def _route_fields(route: Route, maze_id: str, ball_seq: int) -> dict:
