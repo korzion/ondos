@@ -7,7 +7,10 @@
       "mode": "glove",
       "applied_tilt_x_deg": 1.8,
       "applied_tilt_y_deg": 2.2,
-      "target_points_mm": [[-20.0, 20.0], [20.0, 20.0], [20.0, -20.0]]
+      "target_points_mm": [[-20.0, 20.0], [20.0, 20.0], [20.0, -20.0]],
+      "is_episode_start": true,
+      "prev_command_x_deg": null,
+      "prev_command_y_deg": null
     },
     {
       "ball_seq": 11,
@@ -15,7 +18,10 @@
       "mode": "glove",
       "applied_tilt_x_deg": 0.5,
       "applied_tilt_y_deg": 3.5,
-      "target_points_mm": [[-20.0, 20.0], [20.0, 20.0], [20.0, -20.0]]
+      "target_points_mm": [[-20.0, 20.0], [20.0, 20.0], [20.0, -20.0]],
+      "is_episode_start": false,
+      "prev_command_x_deg": null,
+      "prev_command_y_deg": null
     },
     {
       "ball_seq": 14,
@@ -23,31 +29,54 @@
       "mode": "glove",
       "applied_tilt_x_deg": 3.0,
       "applied_tilt_y_deg": 0.0,
-      "target_points_mm": [[20.0, 20.0], [20.0, -20.0]]
+      "target_points_mm": [[20.0, 20.0], [20.0, -20.0]],
+      "is_episode_start": false,
+      "prev_command_x_deg": null,
+      "prev_command_y_deg": null
     },
     {
       "ball_seq": 32,
       "maze_id": "maze-b",
-      "mode": "glove",
+      "mode": "simple",
       "applied_tilt_x_deg": 0.0,
       "applied_tilt_y_deg": -3.0,
-      "target_points_mm": [[-20.0, -20.0], [20.0, -20.0]]
+      "target_points_mm": [[-20.0, -20.0], [20.0, -20.0]],
+      "is_episode_start": true,
+      "prev_command_x_deg": null,
+      "prev_command_y_deg": null
     },
     {
       "ball_seq": 33,
       "maze_id": "maze-b",
-      "mode": "glove",
+      "mode": "simple",
       "applied_tilt_x_deg": 4.0,
       "applied_tilt_y_deg": 0.0,
-      "target_points_mm": [[20.0, -20.0]]
+      "target_points_mm": [[20.0, -20.0]],
+      "is_episode_start": false,
+      "prev_command_x_deg": 0.0,
+      "prev_command_y_deg": -3.0
     },
     {
       "ball_seq": 34,
       "maze_id": "maze-b",
-      "mode": "glove",
+      "mode": "simple",
       "applied_tilt_x_deg": 1.2,
       "applied_tilt_y_deg": 0.0,
-      "target_points_mm": [[20.0, -20.0]]
+      "target_points_mm": [[20.0, -20.0]],
+      "is_episode_start": false,
+      "prev_command_x_deg": 4.0,
+      "prev_command_y_deg": 0.0
+    },
+    {
+      "ball_seq": 35,
+      "maze_id": "maze-b",
+      "mode": "simple",
+      "applied_tilt_x_deg": 0.8,
+      "applied_tilt_y_deg": 0.0,
+      "target_points_mm": [[20.0, -20.0]],
+      "is_episode_start": true,
+      "prev_command_x_deg": null,
+      "prev_command_y_deg": null
     }
   ],
   "stale_platform_ball_seqs": [15],
@@ -62,9 +91,9 @@
     "missing_maze": 0,
     "missing_distance_map": 0,
     "missing_route": 0,
-    "maze_mismatch": 1,
+    "maze_mismatch": 4,
     "invalid_route": 1,
-    "stale_route": 0,
+    "stale_route": 1,
     "route_mismatch": 1,
     "missing_platform_state": 0,
     "platform_fault_or_estop": 0,

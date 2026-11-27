@@ -33,7 +33,9 @@ EXCLUSION_REASONS = (
     "stale_platform_state",
 )
 
+_MS_PER_S = 1000.0
 _IMITATION_SOURCES = frozenset({"glove", "ai", "simple"})
+_COMMAND_TOPICS = frozenset({T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT})
 _SNAPSHOT_TOPICS = frozenset({
     T.GAME_STATE,
     T.PLATFORM_STATE,
@@ -91,6 +93,11 @@ class TrainingRow:
     applied_tilt_y_deg: float
     source: str
 
+    # Episode boundary and prior command fields for ObservationBuilder previous_action
+    prev_command_x_deg: float | None
+    prev_command_y_deg: float | None
+    is_episode_start: bool
+
     # Freshness & imitation flags (IF-09)
     platform_age_ms: float
     game_state_age_ms: float
@@ -123,6 +130,15 @@ class LoadedRecording:
     stats: RecordingStats
 
 
+@dataclass
+class _EpisodeTracker:
+    """Tracks episode discontinuities and the latest valid controller tilt command."""
+
+    episode_broken: bool = True
+    last_episode_key: tuple[str, str, str] | None = None
+    last_command: tuple[str, float, float] | None = None
+
+
 class RecordingReader:
     """Reads IF-09 JSONL recordings and joins valid samples without future or cross-maze leakage."""
 
@@ -139,24 +155,17 @@ class RecordingReader:
         routes_by_ball_seq = self._index_routes(clean_lines)
 
         snapshots: dict[str, tuple[float, dict[str, Any]]] = {}
+        tracker = _EpisodeTracker()
         rows: list[TrainingRow] = []
         all_rows: list[TrainingRow] = []
 
         for t_now, group_iter in itertools.groupby(clean_lines, key=lambda item: item[0]):
             group = list(group_iter)
-            self._update_snapshots(t_now, group, snapshots)
-            for _, _, topic, ball_msg in group:
-                if topic != T.VISION_BALL:
-                    continue
-                stats.ball_samples += 1
-                row, reason = self._build_row(
-                    t_now, ball_msg, snapshots, routes_by_ball_seq, header
-                )
-                if row is None:
-                    assert reason is not None
-                    stats.excluded[reason] += 1
-                    continue
-                self._record_row(row, rows, all_rows, stats)
+            self._update_snapshots(t_now, group, snapshots, tracker)
+            self._process_ball_group(
+                t_now, group, snapshots, routes_by_ball_seq, header, tracker, rows, all_rows, stats
+            )
+            self._update_last_command(group, tracker)
 
         loaded = LoadedRecording(
             path=rec_path, header=header, rows=rows, all_rows=all_rows, stats=stats
@@ -196,6 +205,31 @@ class RecordingReader:
             raise RuntimeError("No recording loaded yet; call load(path) first")
         return self._loaded
 
+    def _process_ball_group(
+        self,
+        t_now: float,
+        group: list[tuple[float, int, str, Any]],
+        snapshots: dict[str, tuple[float, dict[str, Any]]],
+        routes_by_ball_seq: dict[int, list[tuple[float, dict[str, Any]]]],
+        header: dict[str, Any],
+        tracker: _EpisodeTracker,
+        rows: list[TrainingRow],
+        all_rows: list[TrainingRow],
+        stats: RecordingStats,
+    ) -> None:
+        for _, _, topic, ball_msg in group:
+            if topic != T.VISION_BALL:
+                continue
+            stats.ball_samples += 1
+            row, reason = self._build_row(
+                t_now, ball_msg, snapshots, routes_by_ball_seq, header, tracker
+            )
+            if row is None:
+                assert reason is not None
+                stats.excluded[reason] += 1
+                continue
+            self._record_row(row, rows, all_rows, stats, tracker)
+
     @staticmethod
     def _read_header(rec_path: Path) -> tuple[dict[str, Any], list[str]]:
         raw_lines = [line for line in rec_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -226,25 +260,19 @@ class RecordingReader:
             except (json.JSONDecodeError, ValidationError):
                 stats.excluded["invalid_message"] += 1
                 continue
-
-            t_recv_s = entry["t_recv_s"]
+            t_recv_s, topic, msg = entry["t_recv_s"], entry["topic"], entry["msg"]
             if not _is_finite_number(t_recv_s):
                 stats.excluded["invalid_message"] += 1
                 continue
-
-            topic, msg = entry["topic"], entry["msg"]
             if self._is_replay_message(msg):
                 stats.excluded["replay"] += 1
                 continue
-            if not self._validate_topic_message(topic, msg):
+            if not self._validate_topic_message(topic, msg) or (
+                topic == T.VISION_BALL and not isinstance(msg, dict)
+            ):
                 stats.excluded["invalid_message"] += 1
                 continue
-            if topic == T.VISION_BALL and not isinstance(msg, dict):
-                stats.excluded["invalid_message"] += 1
-                continue
-
             clean_lines.append((float(t_recv_s), line_no, topic, msg))
-
         # Sort strictly by Recorder clock (t_recv_s) to prevent future context leakage.
         clean_lines.sort(key=lambda item: (item[0], item[1]))
         return clean_lines
@@ -267,10 +295,36 @@ class RecordingReader:
         t_now: float,
         group: list[tuple[float, int, str, Any]],
         snapshots: dict[str, tuple[float, dict[str, Any]]],
+        tracker: _EpisodeTracker,
     ) -> None:
         for _, _, topic, msg in group:
-            if topic != T.VISION_BALL and topic in _SNAPSHOT_TOPICS and isinstance(msg, dict):
-                snapshots[topic] = (t_now, copy.deepcopy(msg))
+            if topic == T.VISION_BALL or topic not in _SNAPSHOT_TOPICS or not isinstance(msg, dict):
+                continue
+            if topic == T.GAME_STATE and msg.get("state") != "playing":
+                tracker.episode_broken = True
+                tracker.last_command = None
+            elif topic == T.PLATFORM_STATE and (msg.get("is_e_stop") or msg.get("fault") != "none"):
+                tracker.episode_broken = True
+                tracker.last_command = None
+            elif topic == T.VISION_MAZE:
+                prev_maze = snapshots.get(T.VISION_MAZE)
+                if prev_maze is not None and prev_maze[1].get("maze_id") != msg.get("maze_id"):
+                    tracker.episode_broken = True
+                    tracker.last_command = None
+            snapshots[topic] = (t_now, copy.deepcopy(msg))
+
+    @staticmethod
+    def _update_last_command(
+        group: list[tuple[float, int, str, Any]], tracker: _EpisodeTracker
+    ) -> None:
+        for _, _, topic, msg in group:
+            if topic not in _COMMAND_TOPICS or not isinstance(msg, dict):
+                continue
+            tilt_x = msg.get("target_tilt_x_deg")
+            tilt_y = msg.get("target_tilt_y_deg")
+            maze_id = msg.get("maze_id")
+            if _is_finite_number(tilt_x) and _is_finite_number(tilt_y) and isinstance(maze_id, str):
+                tracker.last_command = (maze_id, float(tilt_x), float(tilt_y))
 
     @staticmethod
     def _record_row(
@@ -278,6 +332,7 @@ class RecordingReader:
         rows: list[TrainingRow],
         all_rows: list[TrainingRow],
         stats: RecordingStats,
+        tracker: _EpisodeTracker,
     ) -> None:
         all_rows.append(row)
         if row.is_platform_stale:
@@ -286,6 +341,8 @@ class RecordingReader:
             return
         rows.append(row)
         stats.kept_rows += 1
+        tracker.episode_broken = False
+        tracker.last_episode_key = (row.game_id, row.maze_id, row.mode)
         if row.maze_id not in stats.maze_ids:
             stats.maze_ids.append(row.maze_id)
         if row.is_usable_for_imitation:
@@ -315,20 +372,20 @@ class RecordingReader:
         snapshots: dict[str, tuple[float, dict[str, Any]]],
         routes_by_ball_seq: dict[int, list[tuple[float, dict[str, Any]]]],
         header: dict[str, Any],
+        tracker: _EpisodeTracker,
     ) -> tuple[TrainingRow | None, str | None]:
         game_ctx, reason = cls._check_game_state(t_now, snapshots)
         if reason is not None:
             return None, reason
         assert game_ctx is not None
         t_game, game_msg, game_state_age_ms = game_ctx
-        active_maze_id = game_msg["maze_id"]
 
         ball_err = cls._check_ball(ball_msg)
         if ball_err is not None:
             return None, ball_err
 
         plan_ctx, reason = cls._check_planning(
-            t_now, ball_msg, active_maze_id, snapshots, routes_by_ball_seq
+            t_now, ball_msg, game_msg["maze_id"], snapshots, routes_by_ball_seq
         )
         if reason is not None:
             return None, reason
@@ -340,14 +397,7 @@ class RecordingReader:
         assert plat_ctx is not None
 
         return cls._make_training_row(
-            t_now,
-            ball_msg,
-            t_game,
-            game_msg,
-            game_state_age_ms,
-            plan_ctx,
-            plat_ctx,
-            header,
+            t_now, ball_msg, t_game, game_msg, game_state_age_ms, plan_ctx, plat_ctx, header, tracker
         ), None
 
     @staticmethod
@@ -358,7 +408,7 @@ class RecordingReader:
         if game_snap is None:
             return None, "missing_game_state"
         t_game, game_msg = game_snap
-        game_state_age_ms = (t_now - t_game) * 1000.0
+        game_state_age_ms = (t_now - t_game) * _MS_PER_S
         if game_state_age_ms > T.GAME_STATE_MAX_AGE_MS:
             return None, "stale_game_state"
         if game_msg["state"] != "playing":
@@ -371,10 +421,7 @@ class RecordingReader:
     def _check_ball(ball_msg: dict[str, Any]) -> str | None:
         if not ball_msg["is_visible"]:
             return "ball_not_visible"
-        if not all(
-            _is_finite_number(ball_msg[k])
-            for k in ("x_mm", "y_mm", "vx_mm_s", "vy_mm_s")
-        ):
+        if not all(_is_finite_number(ball_msg[k]) for k in ("x_mm", "y_mm", "vx_mm_s", "vy_mm_s")):
             return "invalid_ball"
         return None
 
@@ -395,13 +442,28 @@ class RecordingReader:
         dmap_snap = snapshots.get(T.PLAN_DISTANCE_MAP)
         if dmap_snap is None:
             return None, "missing_distance_map"
-
         t_maze, maze_msg = maze_snap
         t_dmap, dmap_msg = dmap_snap
         if maze_msg["maze_id"] != active_maze_id or dmap_msg["maze_id"] != active_maze_id:
             return None, "maze_mismatch"
+        route_pair, reason = RecordingReader._select_route(
+            t_now, int(ball_msg["seq"]), active_maze_id, snapshots, routes_by_ball_seq
+        )
+        if reason is not None:
+            return None, reason
+        assert route_pair is not None
+        t_route, route_msg, route_age_ms = route_pair
+        return (t_maze, maze_msg, t_dmap, dmap_msg, t_route, route_msg, route_age_ms), None
 
-        candidates = routes_by_ball_seq.get(int(ball_msg["seq"]), [])
+    @staticmethod
+    def _select_route(
+        t_now: float,
+        ball_seq: int,
+        active_maze_id: str,
+        snapshots: dict[str, tuple[float, dict[str, Any]]],
+        routes_by_ball_seq: dict[int, list[tuple[float, dict[str, Any]]]],
+    ) -> tuple[tuple[float, dict[str, Any], float] | None, str | None]:
+        candidates = routes_by_ball_seq.get(ball_seq, [])
         if not candidates:
             latest_route = snapshots.get(T.PLAN_ROUTE)
             if latest_route is None:
@@ -409,18 +471,15 @@ class RecordingReader:
             if latest_route[1]["maze_id"] != active_maze_id:
                 return None, "maze_mismatch"
             return None, "route_mismatch"
-
         t_route, route_msg = min(candidates, key=lambda item: abs(item[0] - t_now))
         if route_msg["maze_id"] != active_maze_id:
             return None, "maze_mismatch"
         if route_msg["status"] != "valid" or not route_msg["target_points_mm"]:
             return None, "invalid_route"
-
-        route_age_ms = abs(t_route - t_now) * 1000.0
+        route_age_ms = abs(t_route - t_now) * _MS_PER_S
         if route_age_ms > T.CONTROLLER_INPUT_MAX_AGE_MS:
             return None, "stale_route"
-
-        return (t_maze, maze_msg, t_dmap, dmap_msg, t_route, route_msg, route_age_ms), None
+        return (t_route, route_msg, route_age_ms), None
 
     @staticmethod
     def _check_platform(
@@ -434,15 +493,10 @@ class RecordingReader:
             return None, "platform_fault_or_estop"
         if not all(
             _is_finite_number(platform_msg[k])
-            for k in (
-                "tilt_x_deg",
-                "tilt_y_deg",
-                "applied_tilt_x_deg",
-                "applied_tilt_y_deg",
-            )
+            for k in ("tilt_x_deg", "tilt_y_deg", "applied_tilt_x_deg", "applied_tilt_y_deg")
         ):
             return None, "invalid_platform_state"
-        platform_age_ms = (t_now - t_platform) * 1000.0
+        platform_age_ms = (t_now - t_platform) * _MS_PER_S
         return (t_platform, platform_msg, platform_age_ms), None
 
     @staticmethod
@@ -455,48 +509,43 @@ class RecordingReader:
         plan_ctx: tuple[float, dict[str, Any], float, dict[str, Any], float, dict[str, Any], float],
         plat_ctx: tuple[float, dict[str, Any], float],
         header: dict[str, Any],
+        tracker: _EpisodeTracker,
     ) -> TrainingRow:
         t_maze, maze_msg, t_dmap, _, t_route, route_msg, route_age_ms = plan_ctx
         t_platform, platform_msg, platform_age_ms = plat_ctx
+        game_id = game_msg["game_id"] or header["game_id"]
+        maze_id, mode = game_msg["maze_id"], game_msg["mode"]
+        episode_key = (game_id, maze_id, mode)
+        is_episode_start = tracker.episode_broken or (
+            tracker.last_episode_key is not None and episode_key != tracker.last_episode_key
+        )
+        prev_cmd_x: float | None = None
+        prev_cmd_y: float | None = None
+        if not is_episode_start and tracker.last_command is not None and tracker.last_command[0] == maze_id:
+            prev_cmd_x, prev_cmd_y = tracker.last_command[1], tracker.last_command[2]
 
         is_platform_stale = platform_age_ms > T.CONTROLLER_INPUT_MAX_AGE_MS
         source = platform_msg["source"]
-        is_usable_for_imitation = (not is_platform_stale) and (source in _IMITATION_SOURCES)
-
         return TrainingRow(
-            game_id=game_msg["game_id"] or header["game_id"],
-            maze_id=game_msg["maze_id"],
-            mode=game_msg["mode"],
-            ball_seq=ball_msg["seq"],
-            route_ball_seq=route_msg["ball_seq"],
-            t_recv_s=t_now,
-            t_game_state_s=t_game,
-            t_platform_state_s=t_platform,
-            t_maze_s=t_maze,
-            t_distance_map_s=t_dmap,
-            t_route_s=t_route,
-            x_mm=float(ball_msg["x_mm"]),
-            y_mm=float(ball_msg["y_mm"]),
-            vx_mm_s=float(ball_msg["vx_mm_s"]),
-            vy_mm_s=float(ball_msg["vy_mm_s"]),
-            is_predicted=bool(ball_msg["is_predicted"]),
-            is_on_exit=bool(ball_msg["is_on_exit"]),
-            tilt_x_deg=float(platform_msg["tilt_x_deg"]),
-            tilt_y_deg=float(platform_msg["tilt_y_deg"]),
-            target_points_mm=[
-                [float(pt[0]), float(pt[1])] for pt in route_msg["target_points_mm"]
-            ],
+            game_id=game_id, maze_id=maze_id, mode=mode,
+            ball_seq=ball_msg["seq"], route_ball_seq=route_msg["ball_seq"],
+            t_recv_s=t_now, t_game_state_s=t_game, t_platform_state_s=t_platform,
+            t_maze_s=t_maze, t_distance_map_s=t_dmap, t_route_s=t_route,
+            x_mm=float(ball_msg["x_mm"]), y_mm=float(ball_msg["y_mm"]),
+            vx_mm_s=float(ball_msg["vx_mm_s"]), vy_mm_s=float(ball_msg["vy_mm_s"]),
+            is_predicted=bool(ball_msg["is_predicted"]), is_on_exit=bool(ball_msg["is_on_exit"]),
+            tilt_x_deg=float(platform_msg["tilt_x_deg"]), tilt_y_deg=float(platform_msg["tilt_y_deg"]),
+            target_points_mm=[[float(pt[0]), float(pt[1])] for pt in route_msg["target_points_mm"]],
             distance_to_exit_cells=route_msg["distance_to_exit_cells"],
             ball_cell=copy.deepcopy(route_msg["ball_cell"]),
-            maze_rows=int(maze_msg["rows"]),
-            maze_cols=int(maze_msg["cols"]),
+            maze_rows=int(maze_msg["rows"]), maze_cols=int(maze_msg["cols"]),
             cell_size_mm=float(maze_msg["cell_size_mm"]),
             applied_tilt_x_deg=float(platform_msg["applied_tilt_x_deg"]),
             applied_tilt_y_deg=float(platform_msg["applied_tilt_y_deg"]),
             source=source,
-            platform_age_ms=platform_age_ms,
-            game_state_age_ms=game_state_age_ms,
-            route_age_ms=route_age_ms,
-            is_platform_stale=is_platform_stale,
-            is_usable_for_imitation=is_usable_for_imitation,
+            prev_command_x_deg=prev_cmd_x, prev_command_y_deg=prev_cmd_y,
+            is_episode_start=is_episode_start,
+            platform_age_ms=platform_age_ms, game_state_age_ms=game_state_age_ms,
+            route_age_ms=route_age_ms, is_platform_stale=is_platform_stale,
+            is_usable_for_imitation=(not is_platform_stale) and (source in _IMITATION_SOURCES),
         )
