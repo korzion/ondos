@@ -36,3 +36,21 @@ Starting decisions, where the design document leaves a detail open:
 - `to_ascii()` draws 2 x rows + 1 lines of 2 x cols + 1 characters; a corner that no wall touches stays open.
 
 Tests: `python -m pytest shared/tests/test_maze_grid.py shared/tests/test_maze_planning.py`
+
+## TypeScript
+
+`mazes.ts` is for TypeScript readers of `vision/maze` and `plan/distance_map` (the Control Station's MazeView and 3D Twin). It has the same rules as the Python helper for cell centres, wall flags and the next cell; loading, `validate()` and the distance map itself stay in Python.
+
+```ts
+import { cellCentreMm, pathToExit, WALL_N } from "@shared/mazes/mazes";
+
+cellCentreMm(maze, { row: 0, col: 1 });       // [x_mm, y_mm] in the board frame
+pathToExit(maze, steps, route.ball_cell);     // cells from the ball cell to the exit, both included
+```
+
+- `pathToExit` follows the route's rule (smallest distance, ties N, E, S, W), so the centres of its cells after the ball cell match `target_points_mm`, with one exception: in the exit cell the route's point is the exit marker (`exit_x_mm`, `exit_y_mm`), not the cell centre, so a reader draws the last part to the marker itself.
+- It gives `[]` when the cell is outside the grid or has no path, when the map does not have the maze's rows and columns, or when the map does not come one step closer to the exit every step (for example a map of another maze), so a reader never draws a wrong path.
+- **The route rule is written twice**: in `planning.py` (`_next_cell`, `_open_neighbours`) and in `mazes.ts` (`nextCell`, `openNeighbours`). A change of the rule in one needs the same change in the other.
+
+Tests: `npm test` in the repo root (`shared/mazes/mazes.test.ts`).
+
