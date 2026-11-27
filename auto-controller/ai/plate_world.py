@@ -27,8 +27,10 @@ if TYPE_CHECKING:  # only for the type hints; the maze object itself comes from 
     from shared.mazes import MazeGrid
 
 PHYSICS_HZ = 240  # IF-08: the physics runs at 240 Hz inside each step
+AXES = 2  # x and y of the board frame (D4)
 GRAVITY_M_S2 = 9.81
 MM_PER_M = 1000.0
+MS_PER_S = 1000.0
 G_PER_KG = 1000.0
 STATIC_MASS_KG = 0.0  # mass 0 makes a body static in PyBullet
 PLATE_THICKNESS_MM = 5.0  # collision body only; the ball rolls on its top face at z = 0
@@ -49,6 +51,10 @@ NO_BODY = -1  # PyBullet body id before the body is created
 NO_ROTATION = [0.0, 0.0, 0.0, 1.0]  # quaternion of an unturned body
 AT_REST = [0.0, 0.0, 0.0]  # zero linear or angular velocity
 WALL_KEY_DECIMALS = 3  # walls closer than 0.001 mm are the same wall
+# PyBullet applies restitution only to contacts faster than this speed (its default is 0.2 m/s). With a
+# max tilt of a few degrees most wall hits are slower, so the default would make restitution useless.
+# ASSUMPTION: 0.01 m/s lets the slow wall hits bounce and still lets a ball rest against a wall without jitter.
+RESTITUTION_VELOCITY_THRESHOLD_M_S = 0.01
 
 NORTH, EAST, SOUTH, WEST = topics.WALL_SIDE_VALUES  # wall_side names of vision/event (IF-04)
 WALL_BITS = {NORTH: WALL_N, EAST: WALL_E, SOUTH: WALL_S, WEST: WALL_W}  # walls[row][col] bit flags (IF-04)
@@ -68,6 +74,8 @@ class PlateWorld:
         """Create the plate, the walls of the maze and the ball for a new episode."""
         pybullet.resetSimulation(physicsClientId=self._client)
         pybullet.setTimeStep(1.0 / PHYSICS_HZ, physicsClientId=self._client)
+        pybullet.setPhysicsEngineParameter(restitutionVelocityThreshold=RESTITUTION_VELOCITY_THRESHOLD_M_S,
+                                           physicsClientId=self._client)
         self.set_tilt(0.0, 0.0)
         self._add_plate(config.plate_width_mm, config.plate_height_mm)
         self._walls = {self._add_wall(wall, maze): wall for wall in _wall_segments(maze)}
@@ -76,8 +84,9 @@ class PlateWorld:
         self._touching_wall_ids = set()
 
     def close(self) -> None:
-        """End the PyBullet connection of this environment."""
-        pybullet.disconnect(physicsClientId=self._client)
+        """End the PyBullet connection of this environment; a second call does nothing."""
+        if pybullet.isConnected(physicsClientId=self._client):
+            pybullet.disconnect(physicsClientId=self._client)
 
     def place_ball(self, x_mm: float, y_mm: float) -> None:
         """Put the ball at rest on the plate at (x_mm, y_mm)."""
