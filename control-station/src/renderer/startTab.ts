@@ -70,6 +70,8 @@ export class StartTab extends Tab {
     private maze_id: string | null = null;
     private route: { maze_id: string; status: RouteStatus } | null = null;
     readonly status_panel: StatusPanel;
+    // Filled by TopicHealthMonitor, which app.ts creates because it also drives the top bar.
+    readonly health_panel_root: HTMLDivElement = document.createElement("div");
 
     private readonly game_state_callback: Callback = (_topic: string, msg: Payload) => this.update_buttons((msg as {state: State}).state);
 
@@ -99,6 +101,7 @@ export class StartTab extends Tab {
         const status_panel_root = document.createElement("div");
         this.root.appendChild(status_panel_root);
         this.status_panel = new StatusPanel(bus_client, status_panel_root);
+        this.root.appendChild(this.health_panel_root);
 
         this.log_list.className = "log-list";
         this.root.appendChild(this.log_list);
