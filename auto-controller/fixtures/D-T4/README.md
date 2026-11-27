@@ -29,6 +29,8 @@ Requirement: D-R4
   18. `ball_seq=114` (`t=4.52s`): recovery `playing` + `ai` -> **allowed (`ai/target_tilt`)**
   19. `ball_seq=115` (`t=4.77s`): recovery `playing` + `simple` -> **allowed (`control/target_tilt`)**
 - `expected.json`: hand-checkable reference listing `max_tilt_deg`, `expected_commands` (`ball_seq`, `mode`, `maze_id`), and `blocked_ball_seqs`.
+  - When a trained model is present in `auto-controller/ai/models/`, all four valid samples (`101`, `102`, `114`, `115`) produce commands (`ai/target_tilt` for `101`/`114`, `control/target_tilt` for `102`/`115`).
+  - When `auto-controller/ai/models/` has no `.zip` model yet, `102` and `115` (`simple` PID mode) are answered on `control/target_tilt`, while `101` and `114` (`ai` mode) publish zero commands and `AutoControllerApp` reports `ai/status = "no_model"`. `run_test.py D-T4` inspects `ai/variables_spec` (`model_version`) and verifies whichever case applies.
 
 ### What can be edited
 

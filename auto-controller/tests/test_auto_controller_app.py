@@ -229,18 +229,25 @@ def test_variables_spec_clamping_and_deferred_model_version() -> None:
 
     specs = {topic: msg for topic, msg in bus.published}
     assert T.variables_spec("ai") in specs and T.variables_spec("pid") in specs
+    assert app._pid.settings["pid_kp_deg_per_mm"] == 0.05
+    assert app._pid.settings["pid_ki_deg_per_mm_per_s"] == 0.05
+    assert app._pid.settings["pid_kd_deg_per_mm_s"] == 0.02
+    assert app._pid.settings["pid_integral_limit_deg"] == 2.0
 
     bus.inject(T.GAME_STATE, _base_game(state="playing", mode="ai"), now[0])
-    bus.inject(T.cs_variables("ai"), {"action_smoothing_pct": 999.0, "tilt_scale_pct": -5.0, "model_version": "ppo-20261201-2"}, now[0])
+    bus.inject(T.cs_variables("ai"), {"action_smoothing_pct": 999.0, "tilt_scale_pct": 150.0, "model_version": "ppo-20261201-2"}, now[0])
     assert app._ai_settings["action_smoothing_pct"] == 100.0
+    assert app._ai_settings["tilt_scale_pct"] == 100.0
+    bus.inject(T.cs_variables("ai"), {"tilt_scale_pct": -5.0}, now[0])
     assert app._ai_settings["tilt_scale_pct"] == 10.0
     assert ai.model_version == "ppo-20261201-1"  # deferred while playing
 
     bus.inject(T.GAME_STATE, _base_game(state="ready", mode="ai"), now[0])
     assert ai.model_version == "ppo-20261201-2"  # applied between games
 
-    bus.inject(T.cs_variables("pid"), {"pid_kp_deg_per_mm": 50.0, "pid_integral_limit_deg": -2.0}, now[0])
+    bus.inject(T.cs_variables("pid"), {"pid_kp_deg_per_mm": 50.0, "pid_kd_deg_per_mm_s": 5.0, "pid_integral_limit_deg": -2.0}, now[0])
     assert app._pid.settings["pid_kp_deg_per_mm"] == 2.0
+    assert app._pid.settings["pid_kd_deg_per_mm_s"] == 1.0
     assert app._pid.settings["pid_integral_limit_deg"] == 0.0
 
 
@@ -325,18 +332,77 @@ def test_non_finite_ball_or_ai_action_never_crashes_or_publishes() -> None:
     bus.inject(T.PLATFORM_STATE, _base_platform(), now[0])
     bus.clear_published()
 
-    # Non-finite AI action is caught cleanly
+    # Non-finite AI action is caught cleanly and reports fault in ai/status
     bus.inject(T.VISION_BALL, _base_ball(seq=1), now[0])
     bus.inject(T.PLAN_ROUTE, _base_route(ball_seq=1), now[0])
-    assert not bus.published
+    assert not [p for p in bus.published if p[0] in (T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT)]
+    assert app.tick()["status"] == "fault"
 
-    # Non-finite ball velocity in PID mode is caught cleanly
+    # Recovers to active once valid action resumes
+    ai.action = (0.2, -0.2)
+    now[0] += 0.02
+    bus.inject(T.VISION_BALL, _base_ball(seq=2), now[0])
+    bus.inject(T.PLAN_ROUTE, _base_route(ball_seq=2), now[0])
+    assert app.tick()["status"] == "active"
+
+    # Non-finite ball velocity in PID mode is caught cleanly and reports fault
+    bus.clear_published()
     bus.inject(T.GAME_STATE, _base_game(state="playing", mode="simple"), now[0])
-    bad_ball = _base_ball(seq=2)
+    bad_ball = _base_ball(seq=3)
     bad_ball["vx_mm_s"] = math.nan
     bus.subs[T.VISION_BALL][0][0](T.VISION_BALL, {**bad_ball, "timestamp_s": now[0], "version": 1, "writer": "vision"}, now[0])
-    bus.inject(T.PLAN_ROUTE, _base_route(ball_seq=2), now[0])
-    assert not bus.published
+    bus.inject(T.PLAN_ROUTE, _base_route(ball_seq=3), now[0])
+    assert not [p for p in bus.published if p[0] in (T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT)]
+    assert app.tick()["status"] == "fault"
+
+
+def test_tick_between_ball_and_route_preserves_pid_integral() -> None:
+    now, bus, app = _setup_app(None)
+    bus.inject(T.variables_spec("platform"), {"variables": [{"name": "max_tilt_deg", "value": 10.0, "default": 10.0, "min": 0.0, "max": 15.0, "choices": None, "is_live": True, "description": "limit"}]}, now[0])
+    bus.inject(T.VISION_MAZE, _base_maze(), now[0])
+    bus.inject(T.PLAN_DISTANCE_MAP, _base_dmap(), now[0])
+    bus.inject(T.GAME_STATE, _base_game(state="playing", mode="simple"), now[0])
+    bus.inject(T.PLATFORM_STATE, _base_platform(), now[0])
+
+    for seq in (1, 2):
+        bus.inject(T.VISION_BALL, _base_ball(seq=seq), now[0])
+        bus.inject(T.PLAN_ROUTE, _base_route(ball_seq=seq), now[0])
+        now[0] += 0.05
+
+    saved_integral = list(app._pid._integral_term_deg)
+    assert saved_integral != [0.0, 0.0]
+
+    # New ball arrives without its route yet (simulated 2 ms route delay); tick() must not reset PID
+    bus.inject(T.PLATFORM_STATE, _base_platform(), now[0])
+    bus.inject(T.VISION_BALL, _base_ball(seq=3), now[0])
+    now[0] += 0.002
+    assert app.tick()["status"] == "active"
+    assert app._pid._integral_term_deg == saved_integral
+
+    # Once the matched route becomes older than 100 ms with no replacement, tick() reports no_path & resets
+    now[0] += 0.16
+    bus.inject(T.GAME_STATE, _base_game(state="playing", mode="simple"), now[0])
+    bus.inject(T.PLATFORM_STATE, _base_platform(), now[0])
+    bus.inject(T.VISION_BALL, _base_ball(seq=4), now[0])
+    assert app.tick()["status"] == "no_path"
+    assert app._pid._integral_term_deg == [0.0, 0.0]
+
+
+def test_d_t4_fixture_without_model_blocks_ai_and_reports_no_model() -> None:
+    now, bus, app = _setup_app(None)
+    bus.clear_published()
+    d_t4_dir = MODULE_DIR / "fixtures/D-T4"
+    for line in (d_t4_dir / "input.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        now[0] = 1000.0 + float(entry["t_s"])
+        bus.inject(entry["topic"], entry["msg"], now[0])
+
+    cmds = [(topic, msg["ball_seq"]) for topic, msg in bus.published if topic in (T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT)]
+    statuses = [msg["status"] for topic, msg in bus.published if topic == T.AI_STATUS]
+    assert cmds == [(T.CONTROL_TARGET_TILT, 102), (T.CONTROL_TARGET_TILT, 115)]
+    assert "no_model" in statuses
 
 
 if __name__ == "__main__":
@@ -346,6 +412,8 @@ if __name__ == "__main__":
         test_status_transitions_and_vision_offline,
         test_pid_resets_on_pause_and_previous_action_resets_in_ai,
         test_non_finite_ball_or_ai_action_never_crashes_or_publishes,
+        test_tick_between_ball_and_route_preserves_pid_integral,
+        test_d_t4_fixture_without_model_blocks_ai_and_reports_no_model,
     ]
     for fn in tests:
         fn()

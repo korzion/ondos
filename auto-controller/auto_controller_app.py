@@ -41,20 +41,20 @@ DEFAULT_AI_SETTINGS: dict[str, Any] = {
     "tilt_scale_pct": 100.0,
 }
 DEFAULT_PID_SETTINGS: dict[str, float] = {
-    "pid_kp_deg_per_mm": 0.1,
-    "pid_ki_deg_per_mm_per_s": 0.02,
-    "pid_kd_deg_per_mm_s": 0.05,
-    "pid_integral_limit_deg": 3.0,
+    "pid_kp_deg_per_mm": 0.05,
+    "pid_ki_deg_per_mm_per_s": 0.05,
+    "pid_kd_deg_per_mm_s": 0.02,
+    "pid_integral_limit_deg": 2.0,
 }
 
 AI_NUMERIC_BOUNDS: dict[str, tuple[float, float, float, str]] = {
     "action_smoothing_pct": (0.0, 100.0, 5.0, "AI output smoothing percentage."),
-    "tilt_scale_pct": (10.0, 150.0, 5.0, "AI output scale percentage."),
+    "tilt_scale_pct": (10.0, 100.0, 5.0, "AI output scale percentage."),
 }
 PID_NUMERIC_BOUNDS: dict[str, tuple[float, float, float, str]] = {
     "pid_kp_deg_per_mm": (0.0, 2.0, 0.01, "Proportional gain (deg/mm)."),
     "pid_ki_deg_per_mm_per_s": (0.0, 2.0, 0.01, "Integral gain (deg/(mm*s))."),
-    "pid_kd_deg_per_mm_s": (0.0, 2.0, 0.01, "Velocity damping gain (deg per mm/s)."),
+    "pid_kd_deg_per_mm_s": (0.0, 1.0, 0.01, "Velocity damping gain (deg per mm/s)."),
     "pid_integral_limit_deg": (0.0, 15.0, 0.5, "Maximum integral tilt contribution (deg)."),
 }
 
@@ -143,10 +143,14 @@ class AutoControllerApp:
         self._routes_by_ball_seq: OrderedDict[int, dict[str, Any]] = OrderedDict()
         self._latest_ball: dict[str, Any] | None = None
         self._latest_route: dict[str, Any] | None = None
+        self._last_matched_ball: dict[str, Any] | None = None
+        self._last_matched_route: dict[str, Any] | None = None
 
         self._previous_action: tuple[float, float] = (0.0, 0.0)
         self._previous_ball_ts: float | None = None
         self._last_answered_ball_seq: int | None = None
+        self._controller_fault = False
+        self._last_published_status: str | None = None
         self._stop_event = threading.Event()
 
     def start(self) -> None:
@@ -208,6 +212,10 @@ class AutoControllerApp:
             )
             if msg.get("state") != "playing" or changed_game:
                 self._reset_controllers()
+                self._controller_fault = False
+                if changed_game:
+                    self._last_matched_ball = None
+                    self._last_matched_route = None
             if self._pending_model_version is not None and msg.get("state") in ("setup", "ready"):
                 version = self._pending_model_version
                 self._pending_model_version = None
@@ -222,6 +230,9 @@ class AutoControllerApp:
             if prev_id != msg.get("maze_id"):
                 self._routes_by_ball_seq.clear()
                 self._latest_route = None
+                self._last_matched_ball = None
+                self._last_matched_route = None
+                self._controller_fault = False
                 self._reset_controllers()
 
     def on_distance_map(self, topic: str, msg: Any, t_recv_s: float) -> None:
@@ -317,10 +328,7 @@ class AutoControllerApp:
             status, active_controller, route_points = self._evaluate_status(t_now)
             if status != "active":
                 self._reset_controllers()
-            payload = self._build_status_payload(status, active_controller, route_points)
-            if self._bus is not None:
-                self._bus.publish(T.AI_STATUS, payload)
-            return payload
+            return self._publish_status(status, active_controller, route_points)
 
     # ------------------------------------------------------------------ internals
     @staticmethod
@@ -376,6 +384,7 @@ class AutoControllerApp:
         if model_version == NO_MODEL_CHOICE:
             return
         if self._load_ai_model(model_version):
+            self._controller_fault = False
             self._publish_ai_variables_spec()
 
     def _is_fresh(self, msg: Mapping[str, Any] | None, now_s: float, max_age_ms: float) -> bool:
@@ -454,11 +463,25 @@ class AutoControllerApp:
             return "no_model"
         return None
 
+    def _resolve_tick_route_pair(
+        self, ball_msg: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        seq = int(ball_msg["seq"])
+        matched = self._routes_by_ball_seq.get(seq)
+        if matched is not None:
+            return ball_msg, matched
+        # Between vision/ball and its plan/route (e.g. 3 ms transit), keep the last matched pair
+        # so tick() does not misreport no_path and reset the PID integral mid-run.
+        if self._last_matched_ball is not None and self._last_matched_route is not None:
+            return self._last_matched_ball, self._last_matched_route
+        return ball_msg, self._latest_route
+
     def _evaluate_status(
         self,
         now_s: float,
         ball: dict[str, Any] | None = None,
         route: dict[str, Any] | None = None,
+        ignore_controller_fault: bool = False,
     ) -> tuple[str, str, list[list[float]]]:
         err, active_ctrl = self._check_game_and_platform(now_s)
         if err is not None:
@@ -468,12 +491,31 @@ class AutoControllerApp:
         if err is not None:
             return err, active_ctrl, []
         assert ball_msg is not None
-        route_msg = self._latest_route if route is None else route
-        err = self._check_route_and_model(now_s, active_ctrl, ball_msg, route_msg)
+        pair_ball, pair_route = (
+            self._resolve_tick_route_pair(ball_msg) if (ball is None and route is None) else (ball_msg, route)
+        )
+        err = self._check_route_and_model(now_s, active_ctrl, pair_ball, pair_route)
         if err is not None:
             return err, active_ctrl, []
-        assert route_msg is not None
-        return "active", active_ctrl, route_msg["target_points_mm"]
+        if not ignore_controller_fault and self._controller_fault:
+            return "fault", active_ctrl, []
+        assert pair_route is not None
+        return "active", active_ctrl, pair_route["target_points_mm"]
+
+    def _publish_status(
+        self, status: str, active_controller: str, route_points: list[list[float]]
+    ) -> dict[str, Any]:
+        payload = self._build_status_payload(status, active_controller, route_points)
+        self._last_published_status = status
+        if self._bus is not None:
+            self._bus.publish(T.AI_STATUS, payload)
+        return payload
+
+    def _publish_status_if_changed(
+        self, status: str, active_controller: str, route_points: list[list[float]]
+    ) -> None:
+        if status != self._last_published_status:
+            self._publish_status(status, active_controller, route_points)
 
     def _build_status_payload(
         self, status: str, active_controller: str, route_points: list[list[float]]
@@ -498,26 +540,40 @@ class AutoControllerApp:
         route = self._routes_by_ball_seq.get(ball_seq)
         if ball is None or route is None:
             return
-
-        status, active_controller, _ = self._evaluate_status(now_s, ball=ball, route=route)
+        self._last_matched_ball = ball
+        self._last_matched_route = route
+        status, active_controller, route_points = self._evaluate_status(
+            now_s, ball=ball, route=route, ignore_controller_fault=True
+        )
         if status != "active":
             self._reset_controllers()
+            self._publish_status_if_changed(status, active_controller, [])
             return
+        self._run_and_publish_cycle(ball_seq, ball, route, active_controller, route_points)
 
-        assert self._game_state is not None
-        assert self._platform_state is not None
-        assert self._max_tilt_deg is not None
+    def _run_and_publish_cycle(
+        self,
+        ball_seq: int,
+        ball: Mapping[str, Any],
+        route: Mapping[str, Any],
+        active_controller: str,
+        route_points: list[list[float]],
+    ) -> None:
+        assert self._game_state is not None and self._platform_state is not None and self._max_tilt_deg is not None
         maze_id = self._game_state["maze_id"]
-
         try:
             if active_controller == "ai":
                 self._publish_ai_command(ball, route, self._platform_state, maze_id, self._max_tilt_deg)
             elif active_controller == "pid":
                 self._publish_pid_command(ball, route, maze_id, self._max_tilt_deg)
+            self._controller_fault = False
             self._last_answered_ball_seq = ball_seq
+            self._publish_status_if_changed("active", active_controller, route_points)
         except (ValueError, RuntimeError) as exc:
             log.warning("dropping invalid controller cycle for seq %s: %s", ball_seq, exc)
+            self._controller_fault = True
             self._reset_controllers()
+            self._publish_status("fault", active_controller, [])
 
     def _publish_ai_command(
         self,

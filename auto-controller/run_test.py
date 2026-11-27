@@ -116,15 +116,31 @@ def _inspect_d_t4_commands(
     return schema_errors, bound_errors, forbidden_hits, wrong_topic_hits, answered
 
 
+def _has_loaded_ai_model(observed: list[tuple[str, object, float]]) -> bool:
+    spec_topic = T.variables_spec("ai")
+    for topic, msg, _ in observed:
+        if topic != spec_topic or not isinstance(msg, dict):
+            continue
+        for var in msg.get("variables", []):
+            if var.get("name") == "model_version":
+                val = var.get("value")
+                return isinstance(val, str) and bool(val) and val != "none"
+    return False
+
+
+def _find_d_t4_fixture_path(t) -> Path:
+    fixture_path = t.fixture_dir / "input.jsonl"
+    if fixture_path.exists():
+        return fixture_path
+    candidates = sorted(t.fixture_dir.glob("*.jsonl"))
+    if not candidates:
+        raise FileNotFoundError(f"{t.test_id}: no *.jsonl fixture found in {t.fixture_dir}")
+    return candidates[0]
+
+
 @suite.test("D-T4", "Only valid commands", requirement="D-R4")
 def d_t4(t):
-    fixture_path = t.fixture_dir / "input.jsonl"
-    if not fixture_path.exists():
-        candidates = sorted(t.fixture_dir.glob("*.jsonl"))
-        if not candidates:
-            raise FileNotFoundError(f"{t.test_id}: no *.jsonl fixture found in {t.fixture_dir}")
-        fixture_path = candidates[0]
-
+    fixture_path = _find_d_t4_fixture_path(t)
     lines = t.load_jsonl(fixture_path.name)
     schema_ok, schema_detail = _validate_d_t4_fixture(lines)
     t.check("fixture lines pass IF-09 and topic schemas", bool(lines) and schema_ok, schema_detail)
@@ -138,7 +154,7 @@ def d_t4(t):
     t.require_broker()
     duration_s = max(float(entry["t_s"]) for entry in lines) + _D_T4_OBSERVE_TAIL_S
     observed = t.observe(
-        [T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT, T.AI_STATUS],
+        [T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT, T.AI_STATUS, T.variables_spec("ai")],
         duration_s,
         start=lambda: t.play_fixture(fixture_path.name),
     )
@@ -146,15 +162,21 @@ def d_t4(t):
     status_msgs = [msg for topic, msg, _ in observed if topic == T.AI_STATUS and isinstance(msg, dict)]
     t.check("auto_controller runtime published ai/status", len(status_msgs) > 0, f"{len(status_msgs)} status msgs")
 
+    has_model = _has_loaded_ai_model(observed)
+    active_expected = expected if has_model else {seq: val for seq, val in expected.items() if val[0] != T.AI_TARGET_TILT}
     cmd_msgs = [(topic, msg) for topic, msg, _ in observed if topic in (T.AI_TARGET_TILT, T.CONTROL_TARGET_TILT)]
-    schema_errors, bound_errors, forbidden_hits, wrong_topic_hits, answered = _inspect_d_t4_commands(cmd_msgs, expected)
+    schema_errors, bound_errors, forbidden_hits, wrong_topic_hits, answered = _inspect_d_t4_commands(cmd_msgs, active_expected)
 
     t.check("published commands pass IF-06 schemas", not schema_errors, str(schema_errors[:3]))
     t.check("published tilts finite and within +/-max_tilt_deg", not bound_errors, str(bound_errors[:3]))
     t.check("zero commands on blocked/stale/invalid/wrong-mode cases", not forbidden_hits and not wrong_topic_hits,
             f"forbidden={forbidden_hits[:3]}, wrong_topic={wrong_topic_hits[:3]}")
-    missing = sorted(set(expected) - set(answered))
-    t.check("all valid samples answered on the selected mode topic", not missing, f"missing={missing}")
+    missing = sorted(set(active_expected) - set(answered))
+    t.check("all valid samples answered on the selected mode topic", not missing, f"missing={missing}, model_loaded={has_model}")
+    if not has_model:
+        no_model_seen = any(m.get("status") == "no_model" for m in status_msgs)
+        t.check("ai mode reports no_model when no model is loaded", no_model_seen,
+                f"statuses={sorted({m.get('status') for m in status_msgs})}")
 
 
 # ---------------------------------------------------------------- D-T5
