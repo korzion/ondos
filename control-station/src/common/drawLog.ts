@@ -1,4 +1,4 @@
-// Draw log of the plots (test E-T1): what the renderer and the main process agree on.
+// Draw log of the plots (test E-T1): what the renderer and the main process agree on (main side: testLogFile.ts).
 // The renderer writes one console line per real uPlot redraw; the main process copies those
 // lines into a file. This works without a preload script and the renderer stays sandboxed.
 
