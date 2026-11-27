@@ -28,7 +28,7 @@ type BallMessage = { is_visible: boolean };
 type EditStateMessage = { state: EditState; reason: EditReason | null };
 type PlatformStateMessage = { is_e_stop: boolean; writer: Writer };
 
-function format_elapsed(elapsed_s: number): string {
+export function format_elapsed(elapsed_s: number): string {
     const whole_s = Math.floor(elapsed_s);
     const minutes = String(Math.floor(whole_s / 60)).padStart(2, "0");
     const seconds = String(whole_s % 60).padStart(2, "0");

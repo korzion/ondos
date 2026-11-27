@@ -8,6 +8,7 @@ import { PlotsTab } from "./plotsTab";
 import { CameraTab } from "./cameraTab";
 import { TopBar } from "./topBar";
 import { StartTab } from "./startTab";
+import { ReplayController } from "./replayController";
 
 const BROKER_WS_URL = `ws://${BROKER_HOST}:${BROKER_WS_PORT}`; // the app UI uses the WebSocket listener (IF-03)
 
@@ -20,6 +21,9 @@ const bus_client = new BusClient(bus);
 const top_bar = new TopBar(bus_client, document.getElementById("top-bar") as HTMLElement);
 // Created here because it needs to exist before show_bus_status() is called
 const start_tab = new StartTab(bus_client);
+// The replay controls sit on the Start tab, which sends the replay commands (E.5).
+const replay_controller = new ReplayController(bus_client, start_tab, top_bar);
+start_tab.root.appendChild(replay_controller.root);
 
 function show_bus_status(): void {
   const is_connected = bus_client.is_connected();
