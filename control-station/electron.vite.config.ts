@@ -1,6 +1,7 @@
 // Build config for the Control Station app (electron-vite).
-// Two separate bundles:
-//   main      src/main/main.ts         -> out/main/main.js      Electron main process (Node): window only
+// Three separate bundles:
+//   main      src/main/main.ts         -> out/main/main.js      Electron main process (Node): window, recording files
+//   preload   src/preload/preload.ts   -> out/preload/          gives the renderer the recording files (IPC)
 //   renderer  src/renderer/index.html  -> out/renderer/         the app UI (browser): BusClient, tabs
 // The renderer imports shared/ from the repository root (topics.ts, bus/bus.ts), so the
 // "@shared" alias points there and the dev server is allowed to read files outside this folder.
@@ -15,6 +16,13 @@ export default defineConfig({
     build: {
       rolldownOptions: {
         input: { main: resolve(__dirname, "src/main/main.ts") },
+      },
+    },
+  },
+  preload: {
+    build: {
+      rolldownOptions: {
+        input: { preload: resolve(__dirname, "src/preload/preload.ts") },
       },
     },
   },
