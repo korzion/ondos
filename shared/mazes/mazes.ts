@@ -54,10 +54,16 @@ export function isInGrid(maze: MazeGeometry, cell: Cell): boolean {
     return cell.row >= 0 && cell.row < maze.rows && cell.col >= 0 && cell.col < maze.cols;
 }
 
+// Inside the grid only, so a maze with an open outer border cannot step off the map.
 function openNeighbours(maze: MazeGeometry, cell: Cell): Cell[] {
     return NEIGHBOUR_STEPS
         .filter(({ wall }) => !hasWall(maze, cell, wall))
-        .map(({ row_step, col_step }) => ({ row: cell.row + row_step, col: cell.col + col_step }));
+        .map(({ row_step, col_step }) => ({ row: cell.row + row_step, col: cell.col + col_step }))
+        .filter((neighbour) => isInGrid(maze, neighbour));
+}
+
+function hasMazeShape(maze: MazeGeometry, steps: number[][]): boolean {
+    return steps.length === maze.rows && steps.every((row) => row.length === maze.cols);
 }
 
 /**
@@ -77,11 +83,13 @@ export function nextCell(maze: MazeGeometry, steps: number[][], cell: Cell): Cel
 
 /**
  * The cells from `start` to the exit, both included, following the distance map with the route's rule.
- * Empty when `start` is outside the grid or has no path, or when the map does not lead to the exit
- * (e.g. a map of another maze), so a reader never draws a wrong path.
+ * Empty when `start` is outside the grid or has no path, when the map is not of the maze's size, or
+ * when the map does not lead to the exit (e.g. a map of another maze), so a reader never draws a wrong path.
+ * The rule is also in planning.py; a change in one needs the same change in the other.
  */
 export function pathToExit(maze: MazeGeometry, steps: number[][], start: Cell): Cell[] {
-    if (!isInGrid(maze, start) || steps[start.row][start.col] === UNREACHABLE_STEPS) return [];
+    if (!hasMazeShape(maze, steps) || !isInGrid(maze, start)) return [];
+    if (steps[start.row][start.col] === UNREACHABLE_STEPS) return [];
     const path = [start];
     let cell = start;
     while (steps[cell.row][cell.col] > 0) {
