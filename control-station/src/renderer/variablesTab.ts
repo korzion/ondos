@@ -123,6 +123,9 @@ export class VariablesTab extends Tab {
         const id = window.setTimeout(() => {
             this.clear_pending(control);
             this.show_value(control, this.confirmed_value(key, name)); // put back the confirmed value
+            // Intended: the sent value stays in user_values and goes out again with the next change. The module
+            // may just be offline; it applies the value from the retained message when it comes back, and its
+            // republished spec then shows it here.
             console.warn(`${key}/${name}: no answer from the module`);
         }, MODULE_ANSWER_TIMEOUT_MS);
         this.pending_timers.set(control, id);
