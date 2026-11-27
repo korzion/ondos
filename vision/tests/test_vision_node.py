@@ -81,12 +81,13 @@ class FakeGrabber:
     """A camera that gives frames at 30 Hz, or one that cannot be opened."""
 
     def __init__(self, can_open: bool = True, clip_frame_count: int | None = None,
-                 clip_frames: list[np.ndarray] | None = None, arrival_delay_s: float = 0.0) -> None:
+                 clip_frames: list[np.ndarray | None] | None = None, arrival_delay_s: float = 0.0) -> None:
         self.can_open = can_open
         self.opened_indexes: list[int] = []
         self.exposures: list[tuple[float, float]] = []
         self.is_closed = False
-        self._clip_frames = list(clip_frames or [])  # the frames of a clip; black frames when not given
+        # The frames that read() gives, in order; None is a read without a frame. Black frames when not given.
+        self._clip_frames = list(clip_frames or [])
         self._clip_frames_left = clip_frame_count if clip_frames is None else len(clip_frames)
         self._arrival_delay_s = arrival_delay_s  # how long a frame has been on the laptop when read() gives it
         self._is_open = False
@@ -107,7 +108,7 @@ class FakeGrabber:
         if self._clip_frames_left is not None:
             self._clip_frames_left -= 1
         frame = self._clip_frames.pop(0) if self._clip_frames else np.zeros((48, 64, 3), dtype=np.uint8)
-        return frame, now_s() - self._arrival_delay_s
+        return None if frame is None else (frame, now_s() - self._arrival_delay_s)
 
     def set_exposure(self, exposure: float, gain: float) -> None:
         self.exposures.append((exposure, gain))
@@ -214,6 +215,7 @@ def test_node_stops_at_the_end_of_a_clip(tmp_path):
 def test_status_shows_the_calibrator_values():
     class StubCalibrator:
         is_calibrated, markers_found, reprojection_error_mm = True, 4, 0.4
+        camera_height_mm = None
 
         def update(self, frame):
             return True
@@ -300,6 +302,7 @@ def run_camera(grabber: FakeGrabber, run_time_s: float, path_planner: PathPlanne
     thread = threading.Thread(target=node.run, daemon=True)
     thread.start()
     time.sleep(run_time_s)
+    assert thread.is_alive(), "the frame loop stopped by itself"
     node.stop()
     thread.join(timeout=2)
     return bus
@@ -319,7 +322,7 @@ def test_lost_camera_keeps_publishing_the_ball_as_not_visible():
         assert (ball["x_mm"], ball["y_mm"]) == pytest.approx(ROLLING_END_MM, abs=POSITION_TOLERANCE_MM)
         assert (ball["vx_mm_s"], ball["vy_mm_s"], ball["meas_x_mm"], ball["meas_y_mm"]) == (0.0, 0.0, None, None)
         assert (ball["is_visible"], ball["is_predicted"], ball["is_on_exit"]) == (False, False, False)
-        assert 0.0 <= ball["frame_age_ms"] < 1.0
+        assert ball["frame_age_ms"] == 0.0
     assert [route["ball_seq"] for route in routes] == [ball["seq"] for ball in balls]
     assert [route["status"] for route in routes[len(seen_frames):]] == ["invalid"] * len(lost_balls)
 
@@ -329,8 +332,19 @@ def test_lost_camera_publishes_no_ball_before_the_markers_were_seen(frame_count)
     """Neither for a camera that never gave a frame, nor for one that only gave frames without the markers."""
     without_markers = np.full((480, 640, 3), GREY, dtype=np.uint8)
     bus = run_camera(FakeGrabber(clip_frames=[without_markers] * frame_count), CAMERA_LOST_TIMEOUT_S + 0.3)
-    assert len(bus.messages(T.VISION_STATUS)) == 2  # at the start and 1 s later: the frame loop is still running
     assert bus.messages(T.VISION_BALL) == []
+
+
+def test_ball_is_visible_again_when_a_lost_camera_comes_back():
+    seen_frames = [scene(load_vision_config(), (*NORTH_OF_START_MM, BALL_DIAMETER_MM))] * 3
+    reads_without_a_frame = [None] * 35  # about 1.5 s: the camera is lost after 1 s
+    bus = run_camera(FakeGrabber(clip_frames=seen_frames + reads_without_a_frame + seen_frames), run_time_s=2.3)
+    balls = bus.messages(T.VISION_BALL)
+    was_visible = [ball["is_visible"] for ball in balls]
+    assert was_visible[:3] == [True] * 3 and was_visible[-3:] == [True] * 3
+    assert False in was_visible[3:-3]
+    assert [ball["seq"] for ball in balls] == list(range(len(balls)))
+    assert (balls[-1]["x_mm"], balls[-1]["y_mm"]) == pytest.approx(NORTH_OF_START_MM, abs=POSITION_TOLERANCE_MM)
 
 
 def test_no_route_is_published_without_a_maze(tmp_path):

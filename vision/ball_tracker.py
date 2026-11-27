@@ -57,7 +57,8 @@ class BallTracker:
     def _correct_parallax(self, seen_x_mm: float, seen_y_mm: float) -> tuple[float, float]:
         """Board position under the ball centre, from the plate position where the camera sees that centre."""
         camera_height_mm = self._calibrator.camera_height_mm
-        if camera_height_mm is None:  # calibrate_camera has not run yet
+        if camera_height_mm is None:
+            # ASSUMPTION (#47): the camera height comes from calibrate_camera. Before it has run nothing is corrected.
             return seen_x_mm, seen_y_mm
         # ASSUMPTION (#47): the camera is above the board origin (C.4: fixed above the maze centre) and the plate is
         # level. The ball centre is half a diameter above the plate, so it is seen further from the origin than it is.

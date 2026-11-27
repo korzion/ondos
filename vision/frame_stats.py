@@ -15,8 +15,7 @@ class FrameStats:
 
     def record_frame(self, t_arrival_s: float, t_done_s: float) -> None:
         """A frame that arrived at t_arrival_s and was finished at t_done_s (laptop clock)."""
-        frame_age_ms = max(0.0, (t_done_s - t_arrival_s) * MS_PER_S)
-        self._frames.append((t_arrival_s, frame_age_ms))
+        self._frames.append((t_arrival_s, frame_age_ms(t_arrival_s, t_done_s)))
         self._drop_frames_before(t_arrival_s - STATS_WINDOW_S)
 
     def fps_hz(self, now_s: float) -> float:
@@ -32,3 +31,8 @@ class FrameStats:
     def _drop_frames_before(self, oldest_s: float) -> None:
         while self._frames and self._frames[0][0] <= oldest_s:
             self._frames.popleft()
+
+
+def frame_age_ms(t_arrival_s: float, t_now_s: float) -> float:
+    """Time since a frame arrived at the laptop (IF-04 frame_age_ms); never below 0."""
+    return max(0.0, (t_now_s - t_arrival_s) * MS_PER_S)

@@ -1,6 +1,6 @@
 import pytest
 
-from vision.frame_stats import FrameStats
+from vision.frame_stats import FrameStats, frame_age_ms
 
 START_S = 1_000.0
 FRAME_RATE_HZ = 30.0
@@ -29,3 +29,11 @@ def test_no_frames_gives_zero():
     last_s = record_frames(stats, duration_s=1.0)
     assert stats.fps_hz(last_s + 2.0) == 0.0
     assert stats.mean_frame_age_ms(last_s + 2.0) == 0.0
+
+
+def test_frame_age_is_the_time_since_the_frame_arrived():
+    assert frame_age_ms(START_S, START_S + 0.025) == pytest.approx(25.0)
+
+
+def test_frame_age_is_never_negative():
+    assert frame_age_ms(START_S, START_S - 0.5) == 0.0

@@ -40,12 +40,12 @@ A clip folder (record mode, `--clip`) holds `video.avi` and `arrival_times.csv` 
 
 VisionNode publishes `vision/ball` for every frame once the 4 markers have been seen, and a `plan/route` for each of these messages while PathPlanner has a valid maze. The maze comes with MazeReader (#48); until then no route is published.
 
-- Set the ball colour thresholds (`ball_h_min` ... `ball_v_max`) first. The defaults accept every colour, so no blob has the ball size and no ball is found.
-- A blob is the ball when its diameter is within 50 % of `ball_diameter_mm`; of several such blobs the one nearest to the ball size is taken.
+- Set the ball colour thresholds (`ball_h_min` ... `ball_v_max`) first. The defaults accept every colour, so no blob has the ball size and no ball is found. A hue range that wraps around (`ball_h_min` above `ball_h_max`, a red ball) is not supported.
+- A blob is the ball when its diameter is within 50 % of `ball_diameter_mm`; of several such blobs the one nearest to the ball size is taken. `ball_diameter_mm` is read once, at the start: a new value needs a restart until MazeReader (#48) is connected.
 - The parallax is corrected after `calibrate_camera` has run, because it measures the camera height. The camera is taken to be above the board centre.
 - The filter (`is_visible`, `is_predicted`, the speed) is `shared/ball_filter/`; its README has the rules.
 - `is_on_exit` is false until EventDetector is written.
-- When the camera is lost (no frame for 1 s), `vision/ball` is still published 30 times per second, with `is_visible = false`, the last known position and `frame_age_ms` 0.
+- When the camera is lost (no frame for 1 s), `vision/ball` is published 30 times per second, with `is_visible = false`, the last known position and `frame_age_ms` 0. In the 1 s before that nothing is published.
 
 Where the design document leaves a detail open, the starting decision is marked `ASSUMPTION` in the code and written in #47.
 

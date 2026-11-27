@@ -24,7 +24,7 @@ from vision.board_calibrator import BoardCalibrator, NotCalibratedError
 from vision.command_rules import is_command_allowed, is_vision_command
 from vision.cpu_meter import CpuMeter
 from vision.frame_grabber import FrameGrabber
-from vision.frame_stats import MS_PER_S, FrameStats
+from vision.frame_stats import FrameStats, frame_age_ms
 from vision.path_planner import PathPlanner
 from vision.vision_variables import CONFIG_KEY, VisionVariables
 
@@ -36,6 +36,8 @@ CAMERA_RETRY_PERIOD_S = 1.0  # a lost camera is opened again every 1 s (C.8)
 # ASSUMPTION (#47): C.8 keeps publishing vision/ball while the camera is lost, but gives no rate. The lowest camera
 # frame rate is used (C.4: 30 fps). STARTING VALUE.
 LOST_CAMERA_BALL_PERIOD_S = 1.0 / 30.0
+# ASSUMPTION (#47): frame_age_ms has no meaning without a frame, but the field cannot be null. 0 is sent.
+NO_FRAME_AGE_MS = 0.0
 NO_FRAME_WAIT_S = 0.01       # short pause when no frame came, so a missing camera does not use a full CPU core
 ENVELOPE_FIELDS = frozenset({"timestamp_s", "seq", "version", "writer"})
 NO_MAZE_MATCH = "none"       # vision/status maze_match while no maze file matches
@@ -211,7 +213,7 @@ class VisionNode:
         # The per-frame parts plug in here, in the order of C.5: calibration, ball state, events,
         # edit state, then the route for this ball sample.
         ball = self._ball_tracker.update(frame, t_arrival_s)
-        self._publish_ball_sample(ball, t_arrival_s)
+        self._publish_ball_sample(ball, frame_age_ms(t_arrival_s, now_s()))
         self._frame_stats.record_frame(t_arrival_s, now_s())
 
     def _handle_missing_frame(self) -> None:
@@ -223,27 +225,28 @@ class VisionNode:
         time.sleep(NO_FRAME_WAIT_S)
 
     # ------------------------------------------------------------ ball and route
-    def _publish_ball_sample(self, ball: BallState, t_arrival_s: float) -> None:
-        """vision/ball for the frame that arrived at t_arrival_s, then the plan/route that answers it."""
+    def _publish_ball_sample(self, ball: BallState, age_ms: float) -> None:
+        """vision/ball for a ball sample whose frame is age_ms old, then the plan/route that answers it."""
         self._last_ball = ball
         if self._calibrator.is_calibrated:
             self._has_seen_markers = True
         if not self._has_seen_markers:
             return  # IF-04: vision/ball is not published until the markers have been seen once
-        ball_msg = self._bus.publish(T.VISION_BALL, _ball_fields(ball, t_arrival_s))
+        ball_msg = self._bus.publish(T.VISION_BALL, _ball_fields(ball, age_ms))
         self._publish_route(ball, ball_msg["seq"])
 
     def _publish_lost_ball_if_due(self, now: float) -> None:
         """C.8: while the camera is lost, vision/ball is still published, with is_visible = false."""
+        # ASSUMPTION (#47): C.8 names a failed read() or no frame for 1 s. The camera counts as lost after
+        # CAMERA_LOST_TIMEOUT_S, as in vision/status, so that one missing frame does not hide the ball. Until then
+        # nothing is published.
         if self._is_camera_ok(now) or self._last_ball is None or now < self._next_lost_ball_s:
             return
         # The next time follows the planned one, not this late one, so the mean rate is right although the loop
         # only looks every NO_FRAME_WAIT_S. Only after a pause of a period or more the times start again from now.
         is_on_schedule = now - self._next_lost_ball_s < LOST_CAMERA_BALL_PERIOD_S
         self._next_lost_ball_s = (self._next_lost_ball_s if is_on_schedule else now) + LOST_CAMERA_BALL_PERIOD_S
-        # ASSUMPTION (#47): frame_age_ms has no meaning without a frame. The sample gets the time now as its
-        # arrival time, so its frame_age_ms is 0.
-        self._publish_ball_sample(_lost_ball(self._last_ball), now)
+        self._publish_ball_sample(_lost_ball(self._last_ball), NO_FRAME_AGE_MS)
 
     def _publish_route(self, ball: BallState, ball_seq: int) -> None:
         """plan/route for the ball sample that was published as vision/ball with this seq."""
@@ -272,8 +275,8 @@ class VisionNode:
                  error_mm, camera_height_mm)
 
 
-def _ball_fields(ball: BallState, t_arrival_s: float) -> dict:
-    """Fields of vision/ball for a ball sample from the frame that arrived at t_arrival_s (IF-04)."""
+def _ball_fields(ball: BallState, age_ms: float) -> dict:
+    """Fields of vision/ball for a ball sample whose frame is age_ms old (IF-04)."""
     return {
         "x_mm": ball.x_mm,
         "y_mm": ball.y_mm,
@@ -283,7 +286,7 @@ def _ball_fields(ball: BallState, t_arrival_s: float) -> dict:
         "is_predicted": ball.is_predicted,
         # ASSUMPTION (#47): is_on_exit is decided by EventDetector, which is not written yet; false until then.
         "is_on_exit": False,
-        "frame_age_ms": max(0.0, (now_s() - t_arrival_s) * MS_PER_S),
+        "frame_age_ms": age_ms,
         "meas_x_mm": ball.meas_x_mm,
         "meas_y_mm": ball.meas_y_mm,
     }
