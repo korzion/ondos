@@ -3,6 +3,7 @@ import statistics
 
 import pytest
 
+from shared.ball_filter import axis_kalman
 from shared.ball_filter.axis_kalman import MEASUREMENT_NOISE_STD_MM, PROCESS_NOISE_MM2_PER_S3, AxisKalman
 
 FRAME_S = 1 / 32  # a frame period that is exact in binary
@@ -23,6 +24,28 @@ def test_a_started_axis_is_at_the_measurement_and_at_rest():
     axis = AxisKalman()
     axis.start(12.5)
     assert (axis.position_mm, axis.velocity_mm_s) == (12.5, 0.0)
+
+
+def test_two_frames_give_the_numbers_of_the_worked_example(monkeypatch):
+    # worked by hand with the matrix form of the filter: measurement variance 1, start variances (1, 300^2),
+    # dt = 1 s and process noise 3, so that Q = [[1, 1.5], [1.5, 3]]
+    monkeypatch.setattr(axis_kalman, "MEASUREMENT_NOISE_STD_MM", 1.0)
+    monkeypatch.setattr(axis_kalman, "INITIAL_VELOCITY_STD_MM_S", 300.0)
+    axis = AxisKalman()
+    axis.start(0.0)
+    axis.predict(1.0, 3.0)
+    axis.correct(10.0)
+    assert (axis.position_mm, axis.velocity_mm_s) == pytest.approx((9.999888893, 9.999833339), abs=1e-8)
+    axis.predict(1.0, 3.0)
+    axis.correct(22.0)
+    assert (axis.position_mm, axis.velocity_mm_s) == pytest.approx((21.749963109, 11.375025824), abs=1e-8)
+
+
+def test_a_restarted_axis_behaves_like_a_new_one():
+    used_axis, new_axis = AxisKalman(), AxisKalman()
+    track(used_axis, [2.0 * frame for frame in range(40)])
+    assert track(used_axis, [5.0, 6.0, 8.0]) == track(new_axis, [5.0, 6.0, 8.0])
+    assert used_axis.velocity_mm_s == new_axis.velocity_mm_s
 
 
 def test_the_velocity_of_a_steady_motion_is_found():

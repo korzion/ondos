@@ -39,11 +39,12 @@ def test_a_tracked_ball_gets_its_velocity_on_the_axis_it_moves_along():
     assert (estimate.is_visible, estimate.is_predicted) == (True, False)
 
 
-def position_one_frame_after_a_jump_mm(filter_noise):
+def estimate_one_frame_after_a_jump(filter_noise):
+    # the ball rests in the board centre and then jumps 10 mm on both axes
     ball_filter = BallFilter(filter_noise, LOST_TIMEOUT_MS)
     for frame in range(40):
         ball_filter.update(0.0, 0.0, frame * FRAME_S)
-    return ball_filter.update(10.0, 0.0, 40 * FRAME_S).x_mm
+    return ball_filter.update(10.0, 10.0, 40 * FRAME_S)
 
 
 def resting_velocity_spread_mm_s(filter_noise):
@@ -53,9 +54,10 @@ def resting_velocity_spread_mm_s(filter_noise):
     return statistics.pstdev(estimate.vx_mm_s for estimate in estimates)
 
 
-def test_a_higher_filter_noise_reacts_faster():
-    smooth, default, fast = (position_one_frame_after_a_jump_mm(noise) for noise in (0.1, 1.0, 10.0))
-    assert 0.0 < smooth < default < fast < 10.0
+def test_a_higher_filter_noise_reacts_faster_on_both_axes():
+    smooth, default, fast = (estimate_one_frame_after_a_jump(noise) for noise in (0.1, 1.0, 10.0))
+    assert 0.0 < smooth.x_mm < default.x_mm < fast.x_mm < 10.0
+    assert (smooth.y_mm, default.y_mm, fast.y_mm) == (smooth.x_mm, default.x_mm, fast.x_mm)
 
 
 def test_a_lower_filter_noise_is_smoother():
@@ -82,6 +84,27 @@ def test_a_frame_without_a_detection_is_predicted_at_the_same_velocity():
     assert predicted.x_mm == pytest.approx(detected.x_mm + detected.vx_mm_s * FRAME_S, abs=1e-9)
     assert (predicted.y_mm, predicted.vx_mm_s, predicted.vy_mm_s) == (detected.y_mm, detected.vx_mm_s, 0.0)
     assert (predicted.is_visible, predicted.is_predicted) == (True, True)
+
+
+def test_several_frames_without_a_detection_are_predicted_one_after_the_other():
+    ball_filter = new_filter()
+    detected = track_along_x(ball_filter, TRACKED_FRAMES)
+    predicted = miss_frames(ball_filter, 40, 42)
+    assert predicted.x_mm == pytest.approx(detected.x_mm + detected.vx_mm_s * 3 * FRAME_S, abs=1e-9)
+    assert predicted.vx_mm_s == detected.vx_mm_s
+
+
+@pytest.mark.parametrize("start_s", [0.0, 1.76e9], ids=["time from zero", "Unix time"])
+def test_the_frame_of_the_loss_does_not_depend_on_where_the_clock_starts(start_s):
+    frame_s = 1 / 30  # not exact in binary: the age of the detection in frame 6 is 200 ms only up to rounding
+    ball_filter = BallFilter(FILTER_NOISE, 200.0)
+    t_s = start_s
+    ball_filter.update(0.0, 0.0, t_s)
+    visible = []
+    for _ in range(7):
+        t_s += frame_s
+        visible.append(ball_filter.update(None, None, t_s).is_visible)
+    assert visible == [True] * 5 + [False] * 2
 
 
 def test_the_ball_is_lost_when_the_last_detection_is_as_old_as_the_timeout():

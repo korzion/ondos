@@ -7,6 +7,9 @@ from shared.ball_filter.axis_kalman import PROCESS_NOISE_MM2_PER_S3, AxisKalman
 from shared.ball_filter.ball_estimate import BallEstimate
 
 MS_PER_S = 1000.0
+# Timestamps are rounded (a Unix time has steps of about 0.0002 ms), so a detection that is exactly lost_timeout_ms
+# old can look a little younger. With the tolerance the ball is lost in the same frame wherever the clock starts.
+TIMESTAMP_TOLERANCE_S = 1e-5
 
 # ASSUMPTION: vision/ball gives the last known position for a lost ball, but nothing for a ball that was never seen.
 # The board centre is given, with is_visible = false.
@@ -80,7 +83,8 @@ class BallFilter:
         if self._track_continues(t_s):
             self._predict(t_s - self._last_update_s)
             return self._estimate(is_predicted=True)
-        self._is_tracking = False  # only a new detection brings a lost ball back, also if the timeout is raised
+        # ASSUMPTION: only a new detection brings a lost ball back, also when lost_timeout_ms is raised meanwhile.
+        self._is_tracking = False
         return self._lost_estimate
 
     def _track_continues(self, t_s: float) -> bool:
@@ -90,10 +94,11 @@ class BallFilter:
         # the age of the last detection is not known then.
         if t_s < self._last_update_s:
             return False
-        return t_s - self._last_detection_s < self.lost_timeout_ms / MS_PER_S
+        return t_s - self._last_detection_s < self.lost_timeout_ms / MS_PER_S - TIMESTAMP_TOLERANCE_S
 
     def _predict(self, dt_s: float) -> None:
-        # filter_noise scales the process noise: more of it trusts the measurements more (faster, less smooth)
+        # ASSUMPTION: C.7 gives filter_noise no unit. It scales the process noise, so a higher value trusts the
+        # measurements more (faster reaction, less smoothing).
         process_noise_mm2_per_s3 = self.filter_noise * PROCESS_NOISE_MM2_PER_S3
         self._axis_x.predict(dt_s, process_noise_mm2_per_s3)
         self._axis_y.predict(dt_s, process_noise_mm2_per_s3)
