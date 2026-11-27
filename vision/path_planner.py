@@ -15,6 +15,13 @@ class PathPlanner:
         self._maze: MazeGrid | None = None
         self._steps: list[list[int]] | None = None
 
+    # ASSUMPTION (#47): C.5 gives PathPlanner no maze_id. plan/route carries the maze_id of the maze its route was
+    # planned on, so the planner tells the publisher which maze that is.
+    @property
+    def maze_id(self) -> str | None:
+        """maze_id of the maze that route() plans on; None without a valid maze."""
+        return None if self._maze is None else self._maze.maze_id
+
     def build(self, maze: MazeGrid) -> list[list[int]] | None:
         """Distance map of a new maze, kept for route(); None when the maze is not valid."""
         self.invalidate()
