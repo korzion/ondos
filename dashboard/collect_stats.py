@@ -234,8 +234,11 @@ def main():
                 else:
                     prs_summary["closed"] += 1
                 for rv in gh.paged(f"/pulls/{pr['number']}/reviews", limit=300):
-                    if rv.get("user") and rv["user"]["login"] != pr["user"]["login"]:
-                        person[people.resolve(rv["user"]["login"])]["reviews"] += 1
+                    reviewer = rv.get("user")
+                    if not reviewer or reviewer.get("type") == "Bot":
+                        continue  # bots such as Copilot are not team members
+                    if reviewer["login"] != pr["user"]["login"]:
+                        person[people.resolve(reviewer["login"])]["reviews"] += 1
             for issue in gh.paged("/issues", {"state": "all"}):
                 if "pull_request" in issue:
                     continue
