@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.game-manager.json && tsc --noEmit -p tsconfig.recorder.json",
     "game-manager": "tsx game-manager/main.ts",
     "recorder": "tsx recorder.ts",
+    "replay": "cd .. && python -m shared.tools.replay listen --recordings control-station/recordings",
+    "fixture-publisher": "cd .. && python control-station/fixtures/fixture_publisher/fixture_publisher.py",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux"
   },
