@@ -11,6 +11,10 @@ MS_PER_S = 1000.0
 # old can look a little younger. With the tolerance the ball is lost in the same frame wherever the clock starts.
 TIMESTAMP_TOLERANCE_S = 1e-5
 
+# ASSUMPTION (#47): C.8 says the filter bridges a gap until lost_timeout_ms. A ball without a detection is predicted
+# for this time only and then held, so that the estimate does not run on through the walls.
+MAX_PREDICTION_MS = 70.0  # 2 frames at 30 frames per second
+
 # ASSUMPTION: vision/ball gives the last known position for a lost ball, but nothing for a ball that was never seen.
 # The board centre is given, with is_visible = false.
 NEVER_SEEN = BallEstimate(0.0, 0.0, 0.0, 0.0, False, False)
@@ -64,28 +68,34 @@ class BallFilter:
         return estimate
 
     def _track(self, meas_x_mm: float, meas_y_mm: float, t_s: float) -> BallEstimate:
-        if self._track_continues(t_s):
+        if self._is_predictable(t_s):
             self._predict(t_s - self._last_update_s)
             self._axis_x.correct(meas_x_mm)
             self._axis_y.correct(meas_y_mm)
         else:
+            # ASSUMPTION: a detection after the prediction time starts a new track at rest, as after a loss.
             self._axis_x.start(meas_x_mm)
             self._axis_y.start(meas_y_mm)
             self._is_tracking = True
         self._last_detection_s = t_s
         estimate = self._estimate(is_predicted=False)
         # ASSUMPTION: the "last known position" of a lost ball (vision/ball) is the estimate of the last frame with
-        # a detection, not the position predicted since then: a prediction of 200 ms can be several cells away.
+        # a detection, not the position predicted and held since then.
         self._lost_estimate = BallEstimate(estimate.x_mm, estimate.y_mm, 0.0, 0.0, False, False)
         return estimate
 
     def _bridge_or_lose(self, t_s: float) -> BallEstimate:
-        if self._track_continues(t_s):
+        if self._is_predictable(t_s):
             self._predict(t_s - self._last_update_s)
             return self._estimate(is_predicted=True)
+        if self._track_continues(t_s):
+            return self._held_estimate()
         # ASSUMPTION: only a new detection brings a lost ball back, also when lost_timeout_ms is raised meanwhile.
         self._is_tracking = False
         return self._lost_estimate
+
+    def _is_predictable(self, t_s: float) -> bool:
+        return self._track_continues(t_s) and self._detection_is_newer_than(MAX_PREDICTION_MS, t_s)
 
     def _track_continues(self, t_s: float) -> bool:
         if not self._is_tracking:
@@ -94,7 +104,15 @@ class BallFilter:
         # the age of the last detection is not known then.
         if t_s < self._last_update_s:
             return False
-        return t_s - self._last_detection_s < self.lost_timeout_ms / MS_PER_S - TIMESTAMP_TOLERANCE_S
+        return self._detection_is_newer_than(self.lost_timeout_ms, t_s)
+
+    def _detection_is_newer_than(self, age_ms: float, t_s: float) -> bool:
+        return t_s - self._last_detection_s < age_ms / MS_PER_S - TIMESTAMP_TOLERANCE_S
+
+    def _held_estimate(self) -> BallEstimate:
+        # ASSUMPTION: vision/ball gives velocity 0 only for is_visible = false. A held ball also gets velocity 0, so
+        # that the position and the velocity agree, and is_predicted stays true, because the ball is not lost yet.
+        return BallEstimate(self._axis_x.position_mm, self._axis_y.position_mm, 0.0, 0.0, True, True)
 
     def _predict(self, dt_s: float) -> None:
         # ASSUMPTION: C.7 gives filter_noise no unit. It scales the process noise, so a higher value trusts the
@@ -117,6 +135,7 @@ def _require_valid_input(meas_x_mm: float | None, meas_y_mm: float | None, t_s: 
 
 
 def _positive_number(value: float, name: str) -> float:
-    if not (math.isfinite(value) and value > 0.0):
+    is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if not (is_number and math.isfinite(value) and value > 0.0):
         raise ValueError(f"{name} must be a finite number > 0, got {value!r}")
     return float(value)
