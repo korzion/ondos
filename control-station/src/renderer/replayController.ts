@@ -27,7 +27,7 @@ const NO_FILE_TEXT = "No recording selected";
 const NO_RECORDINGS_TEXT = "No recordings yet";
 const WAITING_TEXT = "Waiting for the replay tool (npm run replay)";
 const NOT_STARTED_TEXT = "The replay tool did not start: is npm run replay running?";
-const TOOL_BUSY_TEXT = "Waiting for the replay tool to finish the last replay";
+const TOOL_BUSY_TEXT = "The replay tool is still playing a replay (Stop ends it)";
 const BUS_NOT_CONNECTED_TEXT = "Bus not connected: the replay cannot start";
 const NO_GAME_STATE_TEXT = "Recorded game: no game state yet";
 
@@ -83,6 +83,9 @@ export class ReplayController {
     // sys/online/replay: the tool is online only while it plays a file. A new replay waits until the
     // last one has gone offline, because the tool drops a replay command while it still plays.
     private is_tool_online = false;
+    // Stop pressed while starting: the tool reads cs/command only once it is online, so the stop is
+    // sent again then.
+    private is_stop_pending = false;
     // Replay clock, in performance.now() milliseconds.
     private started_ms = 0;
     private paused_at_ms: number | null = null;
@@ -127,6 +130,7 @@ export class ReplayController {
             return;
         }
         this.speed = speed;
+        this.is_stop_pending = false;
         this.start_tab.start_replay(this.file, speed);
         this.message_element.textContent = WAITING_TEXT;
         this.start_timer = setTimeout(() => this.on_start_timeout(), REPLAY_TOOL_START_TIMEOUT_MS);
@@ -140,8 +144,13 @@ export class ReplayController {
         this.set_phase("paused");
     }
 
+    // Also stops a replay that came online after the panel gave up on it (start timeout).
     stop(): void {
-        if (this.phase === "idle") return;
+        if (this.phase === "idle") {
+            if (this.is_tool_online) this.start_tab.send_command("replay_stop");
+            return;
+        }
+        if (this.phase === "starting") this.is_stop_pending = true;
         this.start_tab.send_command("replay_stop");
         this.finish();
         this.show_file_info(); // "waiting for the tool to finish" until it goes offline
@@ -150,6 +159,10 @@ export class ReplayController {
     private on_replay_online(is_online: boolean): void {
         this.is_tool_online = is_online;
         this.top_bar.set_banner("replay", is_online);
+        if (is_online && this.is_stop_pending) {
+            this.is_stop_pending = false;
+            this.start_tab.send_command("replay_stop");
+        }
         if (is_online && this.phase === "starting") {
             this.start_clock();
             return;
@@ -160,8 +173,9 @@ export class ReplayController {
             this.finish();
             return;
         }
-        // The last replay has gone offline after stop(): Play can be used again.
-        if (!is_online && this.phase === "idle") {
+        // Idle: a replay still playing after stop() or a late start keeps Stop on; once it has gone
+        // offline, Play can be used again.
+        if (this.phase === "idle") {
             this.show_file_info();
             this.update_controls();
         }
@@ -300,7 +314,7 @@ export class ReplayController {
         const can_start = is_idle && this.recording !== null && !this.is_tool_online;
         this.play_button.disabled = !(this.phase === "paused" || can_start);
         this.pause_button.disabled = this.phase !== "playing";
-        this.stop_button.disabled = is_idle;
+        this.stop_button.disabled = is_idle && !this.is_tool_online;
     }
 
     private build_panel(): void {
