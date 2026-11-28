@@ -35,13 +35,16 @@ bool GloveHandler::begin() {
     return false;
   }
 
-  esp_now_peer_info_t peer{};
-  std::memcpy(peer.peer_addr, GLOVE_MAC, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
+  if (!esp_now_is_peer_exist(GLOVE_MAC)) {
+    esp_now_peer_info_t peer{};
+    std::memcpy(peer.peer_addr, GLOVE_MAC, 6);
+    peer.channel = 0;
+    peer.encrypt = false;
 
-  if (esp_now_add_peer(&peer) != ESP_OK) {
-    return false;
+    const esp_err_t add_err = esp_now_add_peer(&peer);
+    if (add_err != ESP_OK && add_err != ESP_ERR_ESPNOW_EXIST) {
+      return false;
+    }
   }
 
   std::memcpy(peer_mac_, GLOVE_MAC, 6);
@@ -89,8 +92,10 @@ void GloveHandler::processGloveData(const uint8_t* data, size_t len, int8_t rssi
     espnow::GloveData pkt{};
     std::memcpy(&pkt, data, sizeof(pkt));
 
-    // Reject non-finite tilt values or invalid calibration flag
+    // Reject non-finite float fields or invalid calibration flag
     if (!std::isfinite(pkt.hand_tilt_x_deg) || !std::isfinite(pkt.hand_tilt_y_deg) ||
+        !std::isfinite(pkt.ax) || !std::isfinite(pkt.ay) || !std::isfinite(pkt.az) ||
+        !std::isfinite(pkt.gx) || !std::isfinite(pkt.gy) || !std::isfinite(pkt.gz) ||
         pkt.is_calibrated > 1) {
       return;
     }
@@ -140,6 +145,7 @@ bool GloveHandler::sendGameInfo(uint32_t now_ms) {
                                sizeof(game_info_));
   if (err == ESP_OK) {
     last_game_info_ms_ = now_ms;
+    game_info_.calibrate_request = 0;
     game_info_dirty_ = false;
     return true;
   }
