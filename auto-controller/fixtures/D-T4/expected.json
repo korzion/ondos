@@ -1,0 +1,10 @@
+{
+  "max_tilt_deg": 10.0,
+  "expected_commands": [
+    {"ball_seq": 101, "mode": "ai", "maze_id": "demo"},
+    {"ball_seq": 102, "mode": "simple", "maze_id": "demo"},
+    {"ball_seq": 114, "mode": "ai", "maze_id": "demo"},
+    {"ball_seq": 115, "mode": "simple", "maze_id": "demo"}
+  ],
+  "blocked_ball_seqs": [99, 100, 1001, 1002, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113]
+}
