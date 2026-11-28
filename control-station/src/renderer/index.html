@@ -153,6 +153,36 @@
         color: #ff8a80;
       }
 
+      .health-panel {
+        flex-shrink: 0;
+        max-height: 40%;
+        overflow-y: auto;
+        padding: 8px 12px;
+        border-radius: 4px;
+        background: #252b33;
+        font-size: 0.85em;
+      }
+      .health-programs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        margin-bottom: 6px;
+      }
+      .program-badge.is-offline,
+      .health-table tr.is-unhealthy {
+        color: #ff8a80;
+      }
+      .health-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .health-table th,
+      .health-table td {
+        padding: 2px 8px;
+        border-top: 1px solid #3a4350;
+        text-align: left;
+      }
+
       .log-list {
         flex: 1;
         min-height: 0;

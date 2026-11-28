@@ -7,7 +7,7 @@
     {"name": "Süleyman Mevlid Uzun",  "short": "Süleyman",  "github": "Smevlid", "emails": []},
     {"name": "Mohammed Z A Alaklouk", "short": "Mohammed",  "github": "Mohammed-Alaklouk", "emails": []},
     {"name": "Talha Tanrıverdi",      "short": "Talha T.",  "github": "ttalhA0", "emails": []},
-    {"name": "Mert Sezer Güler",      "short": "Mert",      "github": "Mithwindy", "emails": []},
+    {"name": "Mert Sezer Güler",      "short": "Mert",      "github": "Mithwindy", "emails": ["m.guler2023@gtu.edu.tr"]},
     {"name": "İbrahim Ahmetoğlu",     "short": "İbrahim",   "github": "iahm2024", "emails": []},
     {"name": "Yağmur Gül",            "short": "Yağmur",    "github": "yagmur-gul", "emails": []},
     {"name": "Aayan Mustafa",         "short": "Aayan",     "github": "rana-aayan", "emails": []}
