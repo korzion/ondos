@@ -94,8 +94,8 @@ void GloveHandler::processGloveData(const uint8_t* data, size_t len, int8_t rssi
 
     // Reject non-finite float fields or invalid calibration flag
     if (!std::isfinite(pkt.hand_tilt_x_deg) || !std::isfinite(pkt.hand_tilt_y_deg) ||
-        !std::isfinite(pkt.ax) || !std::isfinite(pkt.ay) || !std::isfinite(pkt.az) ||
-        !std::isfinite(pkt.gx) || !std::isfinite(pkt.gy) || !std::isfinite(pkt.gz) ||
+        !std::isfinite(pkt.ax_m_s2) || !std::isfinite(pkt.ay_m_s2) || !std::isfinite(pkt.az_m_s2) ||
+        !std::isfinite(pkt.gx_deg_s) || !std::isfinite(pkt.gy_deg_s) || !std::isfinite(pkt.gz_deg_s) ||
         pkt.is_calibrated > 1) {
       return;
     }
