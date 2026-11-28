@@ -209,9 +209,10 @@ def play_e_t1_fixture(t, params: dict) -> tuple[float, float]:
     return start_s, time.time()
 
 
-def read_draw_log(path: Path) -> list[dict]:
+def read_test_log(path: Path, env_name: str) -> list[dict]:
+    """A JSONL log the app writes for a test (E-T1 draw log, E-T6 health log)."""
     if not path.exists():
-        raise FileNotFoundError(f"draw log {path} not found: was the app started with ONDOS_DRAW_LOG?")
+        raise FileNotFoundError(f"log {path} not found: was the app started with {env_name}?")
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     log = []
     for number, line in enumerate(lines, 1):
@@ -259,7 +260,7 @@ def e_t1(t):
     if not all(c.ok for c in t.checks):
         return
     start_s, end_s = play_e_t1_fixture(t, params)
-    log = read_draw_log(log_path)
+    log = read_test_log(log_path, "ONDOS_DRAW_LOG")
     for topic in params["publish_rates_hz"]:
         # Draws with no samples (the empty chart built when the tab opens) are not updates.
         draws = [d for d in log if d["plot"] == topic and d["points"] > 0 and start_s <= d["t_s"] <= end_s]
@@ -286,9 +287,114 @@ def e_t5(t):
     t.not_implemented()
 
 
+def e_t6_silences(params: dict) -> list[tuple[str, float, float]]:
+    """When each topic is stopped, in turn: (topic, start_s, end_s) on the fixture clock.
+    A topic stays silent for its max delay plus the warning window plus a margin, so the warning has time to show."""
+    silences = []
+    start_s = params["warm_up_s"]
+    for topic, spec in params["topics"].items():
+        silence_s = spec["max_delay_ms"] / MS_PER_S + params["warning_window_s"] + params["silence_margin_s"]
+        silences.append((topic, start_s, start_s + silence_s))
+        start_s += silence_s + params["recovery_s"]
+    return silences
+
+
+def e_t6_fixture_lines(params: dict, silences: list[tuple[str, float, float]]) -> list[dict]:
+    """Every topic at its rate for the whole run, except while it is silent."""
+    end_s = silences[-1][2] + params["recovery_s"]
+    silence_by_topic = {topic: (start_s, stop_s) for topic, start_s, stop_s in silences}
+    lines = []
+    for topic, spec in params["topics"].items():
+        payload = example_payload(topic)
+        silence_start_s, silence_end_s = silence_by_topic[topic]
+        for i in range(int(end_s * spec["rate_hz"])):
+            t_s = i / spec["rate_hz"]
+            if silence_start_s <= t_s < silence_end_s:
+                continue
+            lines.append({"t_s": t_s, "topic": topic, "msg": payload})
+    return sorted(lines, key=lambda line: line["t_s"])
+
+
+def play_and_observe(t, lines: list[dict], duration_s: float) -> list[tuple[str, object, float]]:
+    """Play the fixture lines and record when each message arrives (wall clock, like the app's log)."""
+    from shared.tools.replay import play_fixture  # needs paho, so not imported for `--list`
+
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "input.jsonl"
+        path.write_text("\n".join(json.dumps(line) for line in lines), encoding="utf-8")
+        player = threading.Thread(target=play_fixture, args=(path, t.host, t.port), daemon=True)
+        received = t.observe(list({line["topic"] for line in lines}), duration_s, start=player.start)
+        player.join()
+    return received
+
+
+def longest_gap_s(arrivals_s: list[float]) -> tuple[float, float]:
+    """The last arrival before the longest pause and the first one after it: where the topic was stopped."""
+    return max(zip(arrivals_s, arrivals_s[1:]), key=lambda pair: pair[1] - pair[0])
+
+
+def first_change(log: list[dict], topic: str, is_missing: bool, after_s: float) -> dict | None:
+    return next((line for line in log if line["topic"] == topic and line["is_missing"] == is_missing
+                 and line["t_s"] > after_s), None)
+
+
+def check_topic_warning(t, topic: str, spec: dict, gap_s: tuple[float, float], log: list[dict], params: dict) -> None:
+    """E-R4 for one topic: the warning turns on after the max delay, within the window, and off when data returns."""
+    last_s, back_s = gap_s
+    warning = first_change(log, topic, True, last_s)
+    if not t.check(f"{topic}: missing-data warning shown", warning is not None and warning["t_s"] <= back_s):
+        return
+    delay_ms = (warning["t_s"] - last_s) * MS_PER_S
+    latest_ms = spec["max_delay_ms"] + params["warning_window_s"] * MS_PER_S
+    t.check(f"{topic}: not before its max delay", delay_ms >= spec["max_delay_ms"] - params["early_tolerance_ms"],
+            f"{delay_ms:.0f} ms after the last message, max delay {spec['max_delay_ms']} ms")
+    t.check(f"{topic}: within 1 s after its max delay", delay_ms <= latest_ms,
+            f"{delay_ms:.0f} ms, at most {latest_ms:.0f} ms")
+    cleared = first_change(log, topic, False, warning["t_s"])
+    t.check(f"{topic}: warning cleared when data returns",
+            cleared is not None and cleared["t_s"] - back_s <= params["warning_window_s"])
+
+
+def check_no_false_warnings(t, gaps_s: dict[str, tuple[float, float]], log: list[dict],
+                            warm_s: float, end_s: float) -> None:
+    """Between warm_s and end_s every topic keeps coming except in its own gap, so a warning anywhere else is false."""
+    false_topics = set()
+    for line in log:
+        is_in_test = line["topic"] in gaps_s and warm_s <= line["t_s"] <= end_s
+        if not line["is_missing"] or not is_in_test:
+            continue
+        last_s, back_s = gaps_s[line["topic"]]
+        if not last_s < line["t_s"] <= back_s:
+            false_topics.add(line["topic"])
+    t.check("no warning while a topic keeps coming", not false_topics, ", ".join(sorted(false_topics)))
+
+
 @suite.test("E-T6", "Missing data", requirement="E-R4")
 def e_t6(t):
-    t.not_implemented()
+    params = t.load_json("params.json")
+    log_path = MODULE_DIR / params["health_log_path"]
+    t.checklist([f"App started with ONDOS_HEALTH_LOG={log_path}, window visible"])
+    if not all(c.ok for c in t.checks):
+        return
+    t.require_broker()
+    lines = e_t6_fixture_lines(params, e_t6_silences(params))
+    try:
+        received = play_and_observe(t, lines, lines[-1]["t_s"] + params["warning_window_s"])
+        arrivals_s = {topic: [s for got, _, s in received if got == topic] for topic in params["topics"]}
+        if not t.check("every topic arrived", all(len(times) > 1 for times in arrivals_s.values())):
+            return
+        gaps_s = {topic: longest_gap_s(times) for topic, times in arrivals_s.items()}
+        log = read_test_log(log_path, "ONDOS_HEALTH_LOG")
+        for topic, spec in params["topics"].items():
+            check_topic_warning(t, topic, spec, gaps_s[topic], log, params)
+        # Before every topic has come once (plus one window for the warning to clear), the app's start-up warnings are still on.
+        warm_s = max(times[0] for times in arrivals_s.values()) + params["warning_window_s"]
+        end_s = max(times[-1] for times in arrivals_s.values())
+        check_no_false_warnings(t, gaps_s, log, warm_s, end_s)
+    finally:
+        # Retained game/state and vision/status would look fresh to the next app that starts.
+        for topic in (T.GAME_STATE, T.VISION_STATUS):
+            clear_retained(t, topic)
 
 
 @suite.test("E-T7", "Recording", requirement="E-R5")

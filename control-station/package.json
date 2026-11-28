@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.game-manager.json && tsc --noEmit -p tsconfig.recorder.json",
     "game-manager": "tsx game-manager/main.ts",
     "recorder": "tsx recorder.ts",
-    "station": "concurrently --names game-manager,recorder,replay --prefix-colors auto \"npm:game-manager\" \"npm:recorder\" \"cd .. && python -m shared.tools.replay listen --recordings control-station/recordings\"",
+    "replay": "cd .. && python -u -m shared.tools.replay listen --recordings control-station/recordings",
+    "fixture-publisher": "cd .. && python control-station/fixtures/fixture_publisher/fixture_publisher.py",
+    "station": "concurrently --names game-manager,recorder,replay --prefix-colors auto \"npm:game-manager\" \"npm:recorder\" \"npm:replay\"",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux"
   },

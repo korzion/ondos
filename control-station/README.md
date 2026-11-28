@@ -22,7 +22,7 @@ The internal folder layout of this module is decided by the module team.
 
 ## Desktop app
 
-The Electron app: the main process is in `src/main/`, the UI in `src/renderer/`. The UI imports `shared/` from the repository root (`@shared/bus/bus`, `@shared/topics`), so both folders need their packages; otherwise typecheck and build fail with `mqtt` and `ajv` not found:
+The Electron app: the main process is in `src/main/`, the UI in `src/renderer/`. The UI imports `shared/` from the repository root (`@shared/bus/bus`, `@shared/topics`, `@shared/mazes/mazes`), so both folders need their packages; otherwise typecheck and build fail with `mqtt` and `ajv` not found:
 
 ```
 npm ci              # in the repository root: mqtt and ajv for shared/
@@ -47,6 +47,10 @@ mosquitto -c ../shared/bus/mosquitto.conf
 ```
 
 On Ubuntu 24.04 the AppImage needs `sudo apt install libfuse2t64`, or run it with `--appimage-extract-and-run`.
+
+### Maze view
+
+The Start tab's right column shows the maze, north (+y) up: walls, the start cell, the exit marker (green), the path to the exit (yellow) and the ball (a grey ring when it is lost or older than 200 ms). A wall hit (`vision/event`) turns that wall red for 1 s. The path follows `plan/distance_map` from the `ball_cell` of `plan/route` with the shared maze helper (`shared/mazes/mazes.ts`), and is drawn only while the maze, the map and the route have the same `maze_id`, the route is younger than 300 ms and `vision/edit_state` is `clear` (a missing or stale edit state counts as not clear). "No path to the exit" is shown only for a route with status `no_path`. It redraws at 20 Hz while the Start tab is open (`maze_view_rate_hz` follows with the cs variables, #142).
 
 ## GameManager
 
@@ -83,6 +87,18 @@ npm run station
 - The app is started separately (`npm run dev` or the built app).
 - The same command works on Windows and Linux (E-R12).
 - The programs connect to the broker at start and stop if it is not there; start the broker first.
+
+## Replay
+
+The replay controls are on the Start tab (ReplayController). They list the files in `recordings/` in this folder, and the shared replay tool plays the chosen file. `npm run station` starts the tool together with GameManager and the Recorder (see above). To start it alone, from this folder with the Python venv active (it runs `python -m shared.tools.replay listen` from the repository root with the same folder):
+
+```
+npm run replay
+```
+
+The replay tool skips every topic whose real writer is online, so stop the fixture publisher before a replay. The publisher also has a script: `npm run fixture-publisher` (options after `--`, e.g. `npm run fixture-publisher -- --no-respond`).
+
+Then choose a file and a speed (0.5x, 1x, 2x) and press Play. Pause, Play (to continue) and Stop send `replay_pause`, `replay_resume` and `replay_stop`. While the replay runs, the top bar shows the "Replay" banner and the controls show the recorded state, mode, time, progress and result.
 
 ## Tests and Dec 4 demo
 

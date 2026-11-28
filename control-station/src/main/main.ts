@@ -1,13 +1,33 @@
-// Electron main process: creates the app window and nothing else.
+// Electron main process: creates the app window and reads the recording files for replay.
 // The bus, the tabs and all app logic live in the renderer (src/renderer/app.ts),
 // which connects to the broker over WebSocket (IF-03).
 import { app, BrowserWindow, Menu } from "electron";
 import { join } from "node:path";
-import { DRAW_LOG_QUERY_FLAG } from "../common/drawLog";
-import { draw_log_path, write_draw_log } from "./drawLogFile";
+import { DRAW_LOG_ENV, DRAW_LOG_PREFIX, DRAW_LOG_QUERY_FLAG } from "../common/drawLog";
+import { HEALTH_LOG_ENV, HEALTH_LOG_PREFIX, HEALTH_LOG_QUERY_FLAG } from "../common/healthLog";
+import { type TestLog, test_log_path, write_test_log } from "./testLogFile";
+import { handle_recording_files } from "./recordingFiles";
 
 const WINDOW_WIDTH = 1280;
 const WINDOW_HEIGHT = 800;
+
+// E-T1: the plots log their draw times. E-T6: the topic-health monitor logs its missing-data warnings.
+const TEST_LOGS: readonly TestLog[] = [
+  { env: DRAW_LOG_ENV, query_flag: DRAW_LOG_QUERY_FLAG, prefix: DRAW_LOG_PREFIX },
+  { env: HEALTH_LOG_ENV, query_flag: HEALTH_LOG_QUERY_FLAG, prefix: HEALTH_LOG_PREFIX },
+];
+
+// Starts every test log whose environment variable is set; returns the URL flags that turn them on in the renderer.
+function start_test_logs(window: BrowserWindow): Record<string, string> {
+  const query: Record<string, string> = {};
+  for (const log of TEST_LOGS) {
+    const log_path = test_log_path(log);
+    if (!log_path) continue;
+    query[log.query_flag] = "1";
+    write_test_log(window, log, log_path);
+  }
+  return query;
+}
 
 function create_window(): void {
   const window = new BrowserWindow({
@@ -18,19 +38,19 @@ function create_window(): void {
     title: "Ondos Control Station",
     show: false,
     webPreferences: {
-      // The renderer is a plain web page: no Node APIs in it.
+      // The renderer is a plain web page: no Node APIs in it. The preload script gives it only
+      // the recording files (#84).
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: join(__dirname, "../preload/preload.js"),
     },
   });
 
   window.once("ready-to-show", () => window.show());
 
-  // Test E-T1: the plots log their draw times only when the page URL carries the flag.
-  const log_path = draw_log_path();
-  const query: Record<string, string> = log_path ? { [DRAW_LOG_QUERY_FLAG]: "1" } : {};
-  if (log_path) write_draw_log(window, log_path);
+  // Tests E-T1 and E-T6: the renderer logs only when the page URL carries the flag.
+  const query = start_test_logs(window);
 
   // npm run dev: electron-vite serves the renderer and sets this URL (hot reload).
   // npm run build / packaged app: load the built file next to this one.
@@ -50,6 +70,7 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     Menu.setApplicationMenu(null);
   }
+  handle_recording_files();
   create_window();
 
   // macOS keeps the app running with no window; clicking the dock icon opens one again.
