@@ -13,6 +13,9 @@ import { game_state_at, read_recording_states, type RecordedGameState, type Reco
 const DISPLAY_INTERVAL_MS = 100;
 // The replay tool waits this long after going online before it plays the first line (replay.py, run()).
 const REPLAY_TOOL_START_DELAY_MS = 300;
+// If the tool is not online this long after Play, it is not running or dropped the command (it plays
+// one file at a time); the panel then gives up instead of waiting for ever.
+const REPLAY_TOOL_START_TIMEOUT_MS = 5000;
 const DEFAULT_SPEED: ReplaySpeed = 1;
 const MS_PER_S = 1000;
 
@@ -23,11 +26,19 @@ const TITLE_TEXT = "Replay";
 const NO_FILE_TEXT = "No recording selected";
 const NO_RECORDINGS_TEXT = "No recordings yet";
 const WAITING_TEXT = "Waiting for the replay tool (npm run replay)";
+const NOT_STARTED_TEXT = "The replay tool did not start: is npm run replay running?";
+const TOOL_BUSY_TEXT = "Waiting for the replay tool to finish the last replay";
 const BUS_NOT_CONNECTED_TEXT = "Bus not connected: the replay cannot start";
 const NO_GAME_STATE_TEXT = "Recorded game: no game state yet";
 
+declare global {
+    interface Window {
+        [RECORDING_FILES_API_NAME]: RecordingFilesApi; // given by the preload script
+    }
+}
+
 function recording_files(): RecordingFilesApi {
-    return (window as unknown as Record<string, RecordingFilesApi>)[RECORDING_FILES_API_NAME];
+    return window[RECORDING_FILES_API_NAME];
 }
 
 function error_text(error: unknown): string {
@@ -68,6 +79,10 @@ export class ReplayController {
     private recording: RecordingStates | null = null;
     private speed: ReplaySpeed = DEFAULT_SPEED;
     private display_timer: ReturnType<typeof setInterval> | null = null;
+    private start_timer: ReturnType<typeof setTimeout> | null = null;
+    // sys/online/replay: the tool is online only while it plays a file. A new replay waits until the
+    // last one has gone offline, because the tool drops a replay command while it still plays.
+    private is_tool_online = false;
     // Replay clock, in performance.now() milliseconds.
     private started_ms = 0;
     private paused_at_ms: number | null = null;
@@ -106,7 +121,7 @@ export class ReplayController {
             this.set_phase("playing");
             return;
         }
-        if (this.phase !== "idle" || this.file === null || this.recording === null) return;
+        if (this.phase !== "idle" || this.file === null || this.recording === null || this.is_tool_online) return;
         if (!this.bus_client.is_connected()) {
             this.message_element.textContent = BUS_NOT_CONNECTED_TEXT;
             return;
@@ -114,6 +129,7 @@ export class ReplayController {
         this.speed = speed;
         this.start_tab.start_replay(this.file, speed);
         this.message_element.textContent = WAITING_TEXT;
+        this.start_timer = setTimeout(() => this.on_start_timeout(), REPLAY_TOOL_START_TIMEOUT_MS);
         this.set_phase("starting");
     }
 
@@ -128,9 +144,11 @@ export class ReplayController {
         if (this.phase === "idle") return;
         this.start_tab.send_command("replay_stop");
         this.finish();
+        this.show_file_info(); // "waiting for the tool to finish" until it goes offline
     }
 
     private on_replay_online(is_online: boolean): void {
+        this.is_tool_online = is_online;
         this.top_bar.set_banner("replay", is_online);
         if (is_online && this.phase === "starting") {
             this.start_clock();
@@ -140,10 +158,24 @@ export class ReplayController {
         if (!is_online && (this.phase === "playing" || this.phase === "paused")) {
             this.show_position();
             this.finish();
+            return;
+        }
+        // The last replay has gone offline after stop(): Play can be used again.
+        if (!is_online && this.phase === "idle") {
+            this.show_file_info();
+            this.update_controls();
         }
     }
 
+    private on_start_timeout(): void {
+        this.start_timer = null;
+        if (this.phase !== "starting") return;
+        this.finish();
+        this.message_element.textContent = NOT_STARTED_TEXT;
+    }
+
     private start_clock(): void {
+        this.clear_start_timer();
         this.started_ms = performance.now() + REPLAY_TOOL_START_DELAY_MS;
         this.paused_at_ms = null;
         this.paused_total_ms = 0;
@@ -152,7 +184,14 @@ export class ReplayController {
         this.set_phase("playing");
     }
 
+    private clear_start_timer(): void {
+        if (this.start_timer === null) return;
+        clearTimeout(this.start_timer);
+        this.start_timer = null;
+    }
+
     private finish(): void {
+        this.clear_start_timer();
         if (this.display_timer !== null) {
             clearInterval(this.display_timer);
             this.display_timer = null;
@@ -218,9 +257,11 @@ export class ReplayController {
 
     private show_file_info(): void {
         if (this.recording === null) return;
-        const unreadable = this.recording.unreadable_lines;
-        const unreadable_text = unreadable > 0 ? ` · ${unreadable} unreadable lines skipped` : "";
-        this.message_element.textContent = `${this.file} · ${this.recording.game_states.length} game states${unreadable_text}`;
+        if (this.phase === "idle" && this.is_tool_online) {
+            this.message_element.textContent = TOOL_BUSY_TEXT;
+            return;
+        }
+        this.message_element.textContent = `${this.file} · ${this.recording.game_states.length} game states`;
     }
 
     private fill_file_select(files: string[]): void {
@@ -256,7 +297,8 @@ export class ReplayController {
         this.file_select.disabled = !is_idle;
         this.speed_select.disabled = !is_idle;
         this.refresh_button.disabled = !is_idle;
-        this.play_button.disabled = !(this.phase === "paused" || (is_idle && this.recording !== null));
+        const can_start = is_idle && this.recording !== null && !this.is_tool_online;
+        this.play_button.disabled = !(this.phase === "paused" || can_start);
         this.pause_button.disabled = this.phase !== "playing";
         this.stop_button.disabled = is_idle;
     }

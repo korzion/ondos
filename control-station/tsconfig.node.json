@@ -1,4 +1,4 @@
-// Electron main process (and a preload script, once there is one) plus the build config: Node types, no DOM.
+// Electron main process, the preload script and the build config: Node types, no DOM.
 {
   "compilerOptions": {
     "target": "ES2022",

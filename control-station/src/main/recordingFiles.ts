@@ -21,14 +21,19 @@ function is_recording_file_name(name: unknown): name is string {
         && name.endsWith(RECORDING_FILE_EXTENSION);
 }
 
+function without_extension(name: string): string {
+    return name.slice(0, -RECORDING_FILE_EXTENSION.length);
+}
+
 async function list_recordings(): Promise<string[]> {
     try {
         const entries = await readdir(recording_folder_path(), { withFileTypes: true });
         return entries
             .filter((entry) => entry.isFile() && is_recording_file_name(entry.name))
             .map((entry) => entry.name)
-            .sort()
-            .reverse(); // names start with the game_id (YYYYMMDD-HHMMSS), so this is newest first
+            // Names start with the game_id (YYYYMMDD-HHMMSS), so this is newest first. The extension is
+            // left out of the comparison, so "<game_id>-2.jsonl" comes before "<game_id>.jsonl".
+            .sort((a, b) => without_extension(b).localeCompare(without_extension(a)));
     } catch (error) {
         // No recording yet: the Recorder creates the folder with the first game.
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
