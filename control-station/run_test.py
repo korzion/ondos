@@ -378,8 +378,8 @@ def e_t6(t):
         return
     t.require_broker()
     lines = e_t6_fixture_lines(params, e_t6_silences(params))
-    received = play_and_observe(t, lines, lines[-1]["t_s"] + params["warning_window_s"])
     try:
+        received = play_and_observe(t, lines, lines[-1]["t_s"] + params["warning_window_s"])
         arrivals_s = {topic: [s for got, _, s in received if got == topic] for topic in params["topics"]}
         if not t.check("every topic arrived", all(len(times) > 1 for times in arrivals_s.values())):
             return

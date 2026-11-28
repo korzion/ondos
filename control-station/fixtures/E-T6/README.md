@@ -38,6 +38,9 @@ The design document gives no timing tolerances; `early_tolerance_ms` and the mar
    `$env:ONDOS_HEALTH_LOG = "out/e-t6-health-log.jsonl"; npm run dev`
    Without the variable the app writes no log. Keep the window visible: a minimized or covered window slows its
    timers down and the warnings come late.
+   Run only the broker and the app: no GameManager, no fixture publishers and no real modules. Anything else
+   that publishes these topics keeps them coming during their pause (for example `game/state` from GameManager),
+   and the test fails.
 3. In another terminal (venv active): `python run_test.py E-T6` and answer `y` to the one manual check.
    The run takes about 25 s and prints PASS or FAIL for each topic.
 
