@@ -2,3 +2,16 @@
 
 auto-controller/ is on sys.path (it holds run_test.py), so this package is imported as `ai`.
 """
+from .recording_reader import (
+    LoadedRecording,
+    RecordingReader,
+    RecordingStats,
+    TrainingRow,
+)
+
+__all__ = [
+    "LoadedRecording",
+    "RecordingReader",
+    "RecordingStats",
+    "TrainingRow",
+]
