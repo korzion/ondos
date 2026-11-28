@@ -37,7 +37,8 @@ The design document gives no tolerances; the values above are our choice.
    The test plays the game for about 35 s, reads the draw log and prints PASS or FAIL for each plot.
 
 Each line of the draw log is one real uPlot redraw: `t_s` (wall clock), `plot` (topic), `x_min_s`, `x_max_s`,
-`oldest_s` and `points`.
+`oldest_s` and `points`. A topic's first chart is named after the topic; a second chart of the same topic with
+another unit adds the unit (`vision/ball mm/s`, ball speed) and is not checked by this test.
 
 ## Broken version (end of the demo)
 
