@@ -35,8 +35,8 @@ void PlatformController::setTargetTilt(float target_x_deg, float target_y_deg, u
   if (!std::isfinite(target_x_deg) || !std::isfinite(target_y_deg)) {
     return;
   }
-  raw_laptop_target_x_ = target_x_deg;
-  raw_laptop_target_y_ = target_y_deg;
+  raw_laptop_target_x_deg_ = target_x_deg;
+  raw_laptop_target_y_deg_ = target_y_deg;
   ever_received_target_tilt_ = true;
   last_target_tilt_ms_ = now_ms;
 }
@@ -45,18 +45,21 @@ void PlatformController::onGloveData(float hand_tilt_x_deg, float hand_tilt_y_de
   if (!std::isfinite(hand_tilt_x_deg) || !std::isfinite(hand_tilt_y_deg)) {
     return;
   }
-  raw_glove_x_ = hand_tilt_x_deg;
-  raw_glove_y_ = hand_tilt_y_deg;
+  raw_glove_x_deg_ = hand_tilt_x_deg;
+  raw_glove_y_deg_ = hand_tilt_y_deg;
   ever_received_glove_data_ = true;
   last_glove_data_ms_ = now_ms;
 }
 
 void PlatformController::onSettings(const serial::Settings& settings) {
   if (std::isfinite(settings.max_tilt_deg) && settings.max_tilt_deg >= 0.0f) {
-    settings_.max_tilt_deg = settings.max_tilt_deg;
+    settings_.max_tilt_deg =
+        (settings.max_tilt_deg > HW_MAX_TILT_DEG) ? HW_MAX_TILT_DEG : settings.max_tilt_deg;
   }
   if (std::isfinite(settings.max_tilt_speed_deg_s) && settings.max_tilt_speed_deg_s > 0.0f) {
-    settings_.max_tilt_speed_deg_s = settings.max_tilt_speed_deg_s;
+    settings_.max_tilt_speed_deg_s = (settings.max_tilt_speed_deg_s > HW_MAX_TILT_SPEED_DEG_S)
+                                         ? HW_MAX_TILT_SPEED_DEG_S
+                                         : settings.max_tilt_speed_deg_s;
   }
   if (std::isfinite(settings.glove_gain) && settings.glove_gain >= 0.0f) {
     settings_.glove_gain = settings.glove_gain;
@@ -176,17 +179,11 @@ void PlatformController::updateMode(uint32_t now_ms) {
   }
   was_laptop_connected_ = laptop_ok;
 
-  // Update E-stop state
-  if (laptop_ok) {
-    is_e_stop_ = physical_e_stop_ || software_e_stop_ || (host_state_ == State::EStop);
-  } else {
-    // Without laptop, E-stop clears when the physical button is released (IF-02)
-    is_e_stop_ = physical_e_stop_;
-    software_e_stop_ = false;
-    if (was_e_stop_ && !is_e_stop_) {
-      // Stay level after release until one short press (IF-02)
-      offline_glove_enabled_ = false;
-    }
+  // IF-02: is_e_stop is physical button OR software e_stop command (survives link drop)
+  is_e_stop_ = physical_e_stop_ || software_e_stop_;
+  if (!laptop_ok && was_e_stop_ && !is_e_stop_) {
+    // Stay level after offline E-stop release until one short press (IF-02)
+    offline_glove_enabled_ = false;
   }
   was_e_stop_ = is_e_stop_;
 
@@ -202,34 +199,38 @@ void PlatformController::updateMode(uint32_t now_ms) {
 }
 
 float PlatformController::applyDeadzoneAndGain(float raw_deg) const {
-  const float dz = settings_.glove_deadzone_deg;
-  if (std::fabs(raw_deg) <= dz) {
+  const float dz_deg = settings_.glove_deadzone_deg;
+  if (std::fabs(raw_deg) <= dz_deg) {
     return 0.0f;
   }
-  const float shifted = (raw_deg > 0.0f) ? (raw_deg - dz) : (raw_deg + dz);
-  return shifted * settings_.glove_gain;
+  const float shifted_deg = (raw_deg > 0.0f) ? (raw_deg - dz_deg) : (raw_deg + dz_deg);
+  return shifted_deg * settings_.glove_gain;
 }
 
 float PlatformController::clampTilt(float deg) const {
-  const float limit = settings_.max_tilt_deg;
-  if (deg > limit) return limit;
-  if (deg < -limit) return -limit;
+  const float limit_deg = settings_.max_tilt_deg;
+  if (deg > limit_deg) return limit_deg;
+  if (deg < -limit_deg) return -limit_deg;
   return deg;
 }
 
 float PlatformController::slewLimit(float current_deg, float target_deg, float max_step_deg) const {
-  const float diff = target_deg - current_deg;
-  if (diff > max_step_deg) return current_deg + max_step_deg;
-  if (diff < -max_step_deg) return current_deg - max_step_deg;
+  const float diff_deg = target_deg - current_deg;
+  if (diff_deg > max_step_deg) return current_deg + max_step_deg;
+  if (diff_deg < -max_step_deg) return current_deg - max_step_deg;
   return target_deg;
 }
 
 void PlatformController::update(uint32_t now_ms) {
-  float dt_s = 0.02f;
+  float dt_s = 0.0f;
   if (has_updated_) {
     const uint32_t delta_ms = now_ms - last_update_ms_;
-    if (delta_ms > 0 && delta_ms <= 200) {
-      dt_s = delta_ms * 1e-3f;
+    if (delta_ms == 0) {
+      dt_s = 0.0f;
+    } else if (delta_ms <= MAX_DT_MS) {
+      dt_s = static_cast<float>(delta_ms) * MS_TO_S;
+    } else {
+      dt_s = DEFAULT_DT_S;
     }
   }
   has_updated_ = true;
@@ -246,8 +247,8 @@ void PlatformController::update(uint32_t now_ms) {
     return;
   }
 
-  float desired_x = 0.0f;
-  float desired_y = 0.0f;
+  float desired_x_deg = 0.0f;
+  float desired_y_deg = 0.0f;
   PlatformSource next_source = PlatformSource::None;
 
   const bool laptop_ok = isLaptopConnected(now_ms);
@@ -258,8 +259,8 @@ void PlatformController::update(uint32_t now_ms) {
       if (current_mode_ == Mode::Glove) {
         if (glove_ok) {
           next_source = PlatformSource::Glove;
-          desired_x = applyDeadzoneAndGain(raw_glove_x_);
-          desired_y = applyDeadzoneAndGain(raw_glove_y_);
+          desired_x_deg = applyDeadzoneAndGain(raw_glove_x_deg_);
+          desired_y_deg = applyDeadzoneAndGain(raw_glove_y_deg_);
         }
       } else if (current_mode_ == Mode::Ai || current_mode_ == Mode::Simple) {
         // Enforce 200 ms command timeout (A-R5, IF-02)
@@ -267,8 +268,8 @@ void PlatformController::update(uint32_t now_ms) {
             ever_received_target_tilt_ && ((now_ms - last_target_tilt_ms_) <= COMMAND_TIMEOUT_MS);
         if (target_fresh) {
           next_source = (current_mode_ == Mode::Ai) ? PlatformSource::Ai : PlatformSource::Simple;
-          desired_x = raw_laptop_target_x_;
-          desired_y = raw_laptop_target_y_;
+          desired_x_deg = raw_laptop_target_x_deg_;
+          desired_y_deg = raw_laptop_target_y_deg_;
         }
       }
     }
@@ -276,18 +277,18 @@ void PlatformController::update(uint32_t now_ms) {
     // Offline (no laptop): follow glove only if latched by button or mid-glove-game drop
     if (offline_glove_enabled_ && glove_ok) {
       next_source = PlatformSource::Glove;
-      desired_x = applyDeadzoneAndGain(raw_glove_x_);
-      desired_y = applyDeadzoneAndGain(raw_glove_y_);
+      desired_x_deg = applyDeadzoneAndGain(raw_glove_x_deg_);
+      desired_y_deg = applyDeadzoneAndGain(raw_glove_y_deg_);
     }
   }
 
   active_source_ = next_source;
-  desired_x = clampTilt(desired_x);
-  desired_y = clampTilt(desired_y);
+  desired_x_deg = clampTilt(desired_x_deg);
+  desired_y_deg = clampTilt(desired_y_deg);
 
-  const float max_step = settings_.max_tilt_speed_deg_s * dt_s;
-  applied_tilt_x_deg_ = slewLimit(applied_tilt_x_deg_, desired_x, max_step);
-  applied_tilt_y_deg_ = slewLimit(applied_tilt_y_deg_, desired_y, max_step);
+  const float max_step_deg = settings_.max_tilt_speed_deg_s * dt_s;
+  applied_tilt_x_deg_ = slewLimit(applied_tilt_x_deg_, desired_x_deg, max_step_deg);
+  applied_tilt_y_deg_ = slewLimit(applied_tilt_y_deg_, desired_y_deg, max_step_deg);
 
   updateModeLed(now_ms);
 }
@@ -306,11 +307,11 @@ void PlatformController::updateModeLed(uint32_t now_ms) {
       break;
     case Mode::Ai:
       // Slow blink (2 Hz)
-      digitalWrite(led_pin_, ((now_ms / 250) % 2 == 0) ? HIGH : LOW);
+      digitalWrite(led_pin_, ((now_ms / AI_LED_HALF_PERIOD_MS) % 2 == 0) ? HIGH : LOW);
       break;
     case Mode::Simple:
       // Fast blink (5 Hz)
-      digitalWrite(led_pin_, ((now_ms / 100) % 2 == 0) ? HIGH : LOW);
+      digitalWrite(led_pin_, ((now_ms / SIMPLE_LED_HALF_PERIOD_MS) % 2 == 0) ? HIGH : LOW);
       break;
   }
 }

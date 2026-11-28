@@ -17,6 +17,10 @@ class PlatformController {
   static constexpr int MODE_BUTTON_PIN = 6;
   static constexpr int MODE_LED_PIN = 7;
 
+  // Physical hardware upper bounds owned by Module A (IF-02)
+  static constexpr float HW_MAX_TILT_DEG = 15.0f;
+  static constexpr float HW_MAX_TILT_SPEED_DEG_S = 120.0f;
+
   // Left-header pins: GPIO 6 = Mode Button (INPUT_PULLUP), GPIO 7 = Mode LED
   void begin(int mode_button_pin = MODE_BUTTON_PIN, int mode_led_pin = MODE_LED_PIN);
 
@@ -103,16 +107,21 @@ class PlatformController {
   uint32_t mode_button_presses_ = 0;
   uint8_t calibrate_request_ = 0;
 
-  // Raw and applied tilt targets
-  float raw_laptop_target_x_ = 0.0f;
-  float raw_laptop_target_y_ = 0.0f;
-  float raw_glove_x_ = 0.0f;
-  float raw_glove_y_ = 0.0f;
+  // Raw and applied tilt targets (degrees)
+  float raw_laptop_target_x_deg_ = 0.0f;
+  float raw_laptop_target_y_deg_ = 0.0f;
+  float raw_glove_x_deg_ = 0.0f;
+  float raw_glove_y_deg_ = 0.0f;
   float applied_tilt_x_deg_ = 0.0f;
   float applied_tilt_y_deg_ = 0.0f;
 
   static constexpr uint32_t DEBOUNCE_MS = 30;
   static constexpr uint32_t LONG_PRESS_MS = 3000;
+  static constexpr uint32_t MAX_DT_MS = 200;
+  static constexpr float DEFAULT_DT_S = 0.02f;
+  static constexpr float MS_TO_S = 1e-3f;
+  static constexpr uint32_t AI_LED_HALF_PERIOD_MS = 250;
+  static constexpr uint32_t SIMPLE_LED_HALF_PERIOD_MS = 100;
 };
 
 }  // namespace ondos
