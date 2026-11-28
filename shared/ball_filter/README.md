@@ -21,7 +21,7 @@ Rules of the filter (vision/ball, IF-04):
 
 - A frame without a detection is predicted at the last velocity (`is_predicted`), for at most `MAX_PREDICTION_MS` (70 ms) after the last detection.
 - Then the ball is held until it is lost: the position stays, the velocity is 0 and `is_predicted` stays true.
-- When the last detection is `lost_timeout_ms` old the ball is lost: `is_visible` is false, the velocity is 0 and the position is the last one with a detection.
+- When the last detection is `lost_timeout_ms` old the ball is lost: `is_visible` is false, the velocity is 0 and the position stays where the ball was held.
 - Only a new detection brings a held or lost ball back. It starts a new track at rest, and the velocity is found again within 3 frames (C-R5).
 - A non-finite value, or a measurement with only one coordinate, raises `ValueError` and the filter does not change.
 
@@ -43,7 +43,7 @@ Starting decisions, where the design document leaves a detail open:
 - Before the first detection the answer is (0, 0, 0, 0, False, False).
 - `MAX_PREDICTION_MS` limits the prediction, so that the estimate does not run on through the walls (C.8 only says the filter bridges the gap until `lost_timeout_ms`). It is a time, 2 frames at 30 frames per second, so it means the same for every frame period of TrainEnv; a constant and not a live setting. Agreed in #47.
 - A held ball has velocity 0 and `is_predicted` true. A detection after the prediction time starts a new track, as after a loss.
-- The "last known position" of a lost ball is the estimate of the last frame with a detection, not the predicted position.
+- The "last known position" of a lost ball is the position where it was predicted and held last, so the position does not jump at the loss.
 - `is_visible` becomes false in the first frame that is `lost_timeout_ms` or more after the last detection, so up to one frame later than the timeout itself. The ages are compared with a tolerance of 0.01 ms, so that rounded timestamps do not move the loss by a frame.
 - A lost ball comes back only with a new detection, also when `lost_timeout_ms` is raised meanwhile.
 - A timestamp before the previous one (a restarted clock or recording) ends the track.

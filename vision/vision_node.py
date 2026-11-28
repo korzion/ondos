@@ -6,6 +6,7 @@ parts) and at the command handlers (read_maze, calibrate_camera).
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import queue
 import threading
@@ -16,11 +17,15 @@ import numpy as np
 
 from shared import topics as T
 from shared.bus import Bus, now_s
+from shared.mazes import Route
+from vision.ball_state import BallState
+from vision.ball_tracker import BallTracker
 from vision.board_calibrator import BoardCalibrator, NotCalibratedError
 from vision.command_rules import is_command_allowed, is_vision_command
 from vision.cpu_meter import CpuMeter
 from vision.frame_grabber import FrameGrabber
-from vision.frame_stats import FrameStats
+from vision.frame_stats import FrameStats, frame_age_ms
+from vision.path_planner import PathPlanner
 from vision.vision_variables import CONFIG_KEY, VisionVariables
 
 log = logging.getLogger(__name__)
@@ -28,6 +33,11 @@ log = logging.getLogger(__name__)
 STATUS_PERIOD_S = 1.0        # vision/status is published at 1 Hz (IF-04)
 CAMERA_LOST_TIMEOUT_S = 1.0  # no frame for 1 s: the camera is lost (C.8)
 CAMERA_RETRY_PERIOD_S = 1.0  # a lost camera is opened again every 1 s (C.8)
+# ASSUMPTION (#47): C.8 keeps publishing vision/ball while the camera is lost, but gives no rate. The lowest camera
+# frame rate is used (C.4: 30 fps). STARTING VALUE.
+LOST_CAMERA_BALL_PERIOD_S = 1.0 / 30.0
+# ASSUMPTION (#47): frame_age_ms has no meaning without a frame, but the field cannot be null. 0 is sent.
+NO_FRAME_AGE_MS = 0.0
 NO_FRAME_WAIT_S = 0.01       # short pause when no frame came, so a missing camera does not use a full CPU core
 ENVELOPE_FIELDS = frozenset({"timestamp_s", "seq", "version", "writer"})
 NO_MAZE_MATCH = "none"       # vision/status maze_match while no maze file matches
@@ -39,7 +49,7 @@ class VisionNode:
     """Main program of Vision: runs the frame loop, applies the game-state rules and publishes vision/*."""
 
     def __init__(self, variables: VisionVariables, grabber: FrameGrabber, bus: Bus, calibrator: BoardCalibrator,
-                 clip_dir: Path | None = None) -> None:
+                 clip_dir: Path | None = None, path_planner: PathPlanner | None = None) -> None:
         self._variables = variables
         self._grabber = grabber
         self._bus = bus
@@ -47,6 +57,12 @@ class VisionNode:
         self._frame_stats = FrameStats()
         self._cpu_meter = CpuMeter()
         self._calibrator = calibrator
+        self._ball_tracker = BallTracker(variables, calibrator)
+        # The planner has no maze until MazeReader (#48) builds one; a planner with a maze can be given instead.
+        self._path_planner = PathPlanner() if path_planner is None else path_planner
+        self._has_seen_markers = False
+        self._last_ball: BallState | None = None
+        self._next_lost_ball_s = 0.0
         self._last_frame: np.ndarray | None = None
         self._game_state_lock = threading.Lock()
         self._game_state: dict | None = None
@@ -196,6 +212,8 @@ class VisionNode:
         self._calibrator.update(frame)
         # The per-frame parts plug in here, in the order of C.5: calibration, ball state, events,
         # edit state, then the route for this ball sample.
+        ball = self._ball_tracker.update(frame, t_arrival_s)
+        self._publish_ball_sample(ball, frame_age_ms(t_arrival_s, now_s()))
         self._frame_stats.record_frame(t_arrival_s, now_s())
 
     def _handle_missing_frame(self) -> None:
@@ -203,7 +221,42 @@ class VisionNode:
         is_retry_due = now - self._last_open_attempt_s >= CAMERA_RETRY_PERIOD_S
         if self._clip_dir is None and not self._is_camera_ok(now) and is_retry_due:
             self._open_camera()
+        self._publish_lost_ball_if_due(now)
         time.sleep(NO_FRAME_WAIT_S)
+
+    # ------------------------------------------------------------ ball and route
+    def _publish_ball_sample(self, ball: BallState, age_ms: float) -> None:
+        """vision/ball for a ball sample whose frame is age_ms old, then the plan/route that answers it."""
+        self._last_ball = ball
+        if self._calibrator.is_calibrated:
+            self._has_seen_markers = True
+        if not self._has_seen_markers:
+            return  # IF-04: vision/ball is not published until the markers have been seen once
+        ball_msg = self._bus.publish(T.VISION_BALL, _ball_fields(ball, age_ms))
+        self._publish_route(ball, ball_msg["seq"])
+
+    def _publish_lost_ball_if_due(self, now: float) -> None:
+        """C.8: while the camera is lost, vision/ball is still published, with is_visible = false."""
+        # ASSUMPTION (#47): C.8 names a failed read() or no frame for 1 s. The camera counts as lost after
+        # CAMERA_LOST_TIMEOUT_S, as in vision/status, so that one missing frame does not hide the ball. Until then
+        # nothing is published.
+        if self._is_camera_ok(now) or self._last_ball is None or now < self._next_lost_ball_s:
+            return
+        # The next time follows the planned one, not this late one, so the mean rate is right although the loop
+        # only looks every NO_FRAME_WAIT_S. Only after a pause of a period or more the times start again from now.
+        is_on_schedule = now - self._next_lost_ball_s < LOST_CAMERA_BALL_PERIOD_S
+        self._next_lost_ball_s = (self._next_lost_ball_s if is_on_schedule else now) + LOST_CAMERA_BALL_PERIOD_S
+        self._publish_ball_sample(_lost_ball(self._last_ball), NO_FRAME_AGE_MS)
+
+    def _publish_route(self, ball: BallState, ball_seq: int) -> None:
+        """plan/route for the ball sample that was published as vision/ball with this seq."""
+        maze_id = self._path_planner.maze_id
+        if maze_id is None:
+            # ASSUMPTION (#47): plan/route is published "while a valid maze exists" and its maze_id cannot be null,
+            # so nothing is published without a maze. Its readers then see the route missing.
+            return
+        route = self._path_planner.route(ball)
+        self._bus.publish(T.PLAN_ROUTE, _route_fields(route, maze_id, ball_seq))
 
     # ------------------------------------------------------------ commands
     def _handle_read_maze(self) -> None:
@@ -220,6 +273,41 @@ class VisionNode:
             return
         log.info("calibrate_camera done: reprojection_error_mm=%.2f camera_height_mm=%.0f",
                  error_mm, camera_height_mm)
+
+
+def _ball_fields(ball: BallState, age_ms: float) -> dict:
+    """Fields of vision/ball for a ball sample whose frame is age_ms old (IF-04)."""
+    return {
+        "x_mm": ball.x_mm,
+        "y_mm": ball.y_mm,
+        "vx_mm_s": ball.vx_mm_s,
+        "vy_mm_s": ball.vy_mm_s,
+        "is_visible": ball.is_visible,
+        "is_predicted": ball.is_predicted,
+        # ASSUMPTION (#47): is_on_exit is decided by EventDetector, which is not written yet; false until then.
+        "is_on_exit": False,
+        "frame_age_ms": age_ms,
+        "meas_x_mm": ball.meas_x_mm,
+        "meas_y_mm": ball.meas_y_mm,
+    }
+
+
+def _lost_ball(last_ball: BallState) -> BallState:
+    """The ball while the camera is lost: not visible and at rest, at its last known position (IF-04)."""
+    return dataclasses.replace(last_ball, vx_mm_s=0.0, vy_mm_s=0.0, is_visible=False, is_predicted=False,
+                               meas_x_mm=None, meas_y_mm=None)
+
+
+def _route_fields(route: Route, maze_id: str, ball_seq: int) -> dict:
+    """Fields of plan/route for a route on the maze maze_id, answering the vision/ball message ball_seq (IF-04)."""
+    return {
+        "maze_id": maze_id,
+        "ball_seq": ball_seq,
+        "status": route.status,
+        "ball_cell": None if route.ball_cell is None else {"row": route.ball_cell[0], "col": route.ball_cell[1]},
+        "target_points_mm": [[x_mm, y_mm] for x_mm, y_mm in route.target_points_mm],
+        "distance_to_exit_cells": route.distance_to_exit_cells,
+    }
 
 
 def _take_request(request: threading.Event) -> bool:

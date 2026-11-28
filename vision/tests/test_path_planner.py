@@ -63,3 +63,23 @@ def test_a_maze_that_is_not_valid_gives_no_map_and_replaces_the_old_maze():
     open_border = dataclasses.replace(example_maze(), walls=((10, 14), (9, 3)))
     assert planner.build(open_border) is None
     assert planner.route(ball_at(*START_MM)) == NO_ROUTE
+
+
+def test_maze_id_is_the_id_of_the_built_maze():
+    assert planner_with_example_maze().maze_id == "example-2x2"
+
+
+def test_maze_id_is_none_before_a_maze_is_built():
+    assert PathPlanner().maze_id is None
+
+
+def test_maze_id_is_none_after_invalidate():
+    planner = planner_with_example_maze()
+    planner.invalidate()
+    assert planner.maze_id is None
+
+
+def test_maze_id_is_none_after_a_maze_that_is_not_valid():
+    planner = planner_with_example_maze()
+    planner.build(dataclasses.replace(example_maze(), walls=((10, 14), (9, 3))))
+    assert planner.maze_id is None
