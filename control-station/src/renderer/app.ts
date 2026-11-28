@@ -10,6 +10,7 @@ import { TwinTab } from "./twinTab";
 import { TopBar } from "./topBar";
 import { VariablesTab } from "./variablesTab";
 import { StartTab } from "./startTab";
+import { MazeView } from "./mazeView";
 import { TopicHealthMonitor } from "./topicHealthMonitor";
 
 const BROKER_WS_URL = `ws://${BROKER_HOST}:${BROKER_WS_PORT}`; // the app UI uses the WebSocket listener (IF-03)
@@ -28,6 +29,9 @@ const bus_client = new BusClient(bus);
 const top_bar = new TopBar(bus_client, document.getElementById("top-bar") as HTMLElement);
 // Created here because it needs to exist before show_bus_status() is called
 const start_tab = new StartTab(bus_client);
+// The 2D maze view sits on the Start tab; index.html places it in the right column.
+const maze_view = new MazeView(bus_client, start_tab);
+start_tab.root.appendChild(maze_view.root);
 
 function show_bus_status(): void {
   const is_connected = bus_client.is_connected();
