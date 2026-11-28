@@ -8,6 +8,7 @@ import {
     GLOVE_STATE, GAME_STATE_MAX_AGE_MS, WRITER_VALUES, Writer, sysOnline, topicInfo,
 } from "@shared/topics";
 import { BusClient } from "./busClient";
+import { log_missing_change } from "./healthLog";
 
 const MS_PER_S = 1000;
 
@@ -164,6 +165,7 @@ export class TopicHealthMonitor {
         const is_missing = is_topic_missing(health, now_s);
         if (is_missing === health.is_missing) return;
         health.is_missing = is_missing;
+        log_missing_change(topic, is_missing);
         this.on_missing_change(topic, is_missing);
     }
 
