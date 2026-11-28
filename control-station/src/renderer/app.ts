@@ -10,6 +10,7 @@ import { TwinTab } from "./twinTab";
 import { TopBar } from "./topBar";
 import { VariablesTab } from "./variablesTab";
 import { StartTab } from "./startTab";
+import { ReplayController } from "./replayController";
 import { MazeView } from "./mazeView";
 import { TopicHealthMonitor } from "./topicHealthMonitor";
 
@@ -29,6 +30,9 @@ const bus_client = new BusClient(bus);
 const top_bar = new TopBar(bus_client, document.getElementById("top-bar") as HTMLElement);
 // Created here because it needs to exist before show_bus_status() is called
 const start_tab = new StartTab(bus_client);
+// The replay controls sit on the Start tab, which sends the replay commands (E.5).
+const replay_controller = new ReplayController(bus_client, start_tab, top_bar);
+start_tab.root.appendChild(replay_controller.root);
 // The 2D maze view sits on the Start tab; index.html places it in the right column.
 const maze_view = new MazeView(bus_client, start_tab);
 start_tab.root.appendChild(maze_view.root);

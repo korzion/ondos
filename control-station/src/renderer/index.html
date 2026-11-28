@@ -123,7 +123,8 @@
         gap: 8px;
       }
       .command-button,
-      .mode-select {
+      .mode-select,
+      .replay-select {
         padding: 6px 14px;
         border: 1px solid #3a4350;
         border-radius: 4px;
@@ -136,7 +137,8 @@
         background: #3a4450;
       }
       .command-button:disabled,
-      .mode-select:disabled {
+      .mode-select:disabled,
+      .replay-select:disabled {
         opacity: 0.4;
         cursor: not-allowed;
       }
@@ -183,9 +185,12 @@
         text-align: left;
       }
 
+      /* The log comes last, under the replay panel, and keeps a few lines in a small window
+         (600 px high); the tab then scrolls instead. */
       .log-list {
+        order: 1;
         flex: 1;
-        min-height: 0;
+        min-height: 120px;
         overflow-y: auto;
         margin: 0;
         padding: 8px 12px;
@@ -197,6 +202,40 @@
         padding: 2px 0;
         font-family: ui-monospace, Consolas, monospace;
         font-size: 0.85em;
+      }
+
+      /* Replay controls (ReplayController) at the bottom of the Start tab. */
+      .replay-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        background: #252b33;
+      }
+      .replay-title {
+        margin: 0;
+        font-size: 1em;
+      }
+      .replay-file-select {
+        min-width: 260px;
+      }
+      .replay-message {
+        color: #aab2bd;
+      }
+      .replay-position-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .replay-position-bar {
+        flex: 1;
+        height: 8px;
+        accent-color: #5b9bd5;
+      }
+      .replay-position-text,
+      .replay-recorded-state {
+        font-variant-numeric: tabular-nums;
       }
     </style>
   </head>

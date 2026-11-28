@@ -72,6 +72,18 @@ npm run recorder -- <broker-url> # another broker
 
 It writes one IF-09 JSONL file per game into `recordings/` in this folder by default. The recording folder and tail duration come from the Control Station variable spec and applied settings (`recording_folder` and `recording_tail_s`). The tail defaults to 2 seconds.
 
+## Replay
+
+The replay controls are on the Start tab (ReplayController). They list the files in `recordings/` in this folder, and the shared replay tool plays the chosen file. Start the tool once from this folder, with the Python venv active (it runs `python -m shared.tools.replay listen` from the repository root with the same folder):
+
+```
+npm run replay
+```
+
+The replay tool skips every topic whose real writer is online, so stop the fixture publisher before a replay. The publisher also has a script: `npm run fixture-publisher` (options after `--`, e.g. `npm run fixture-publisher -- --no-respond`).
+
+Then choose a file and a speed (0.5x, 1x, 2x) and press Play. Pause, Play (to continue) and Stop send `replay_pause`, `replay_resume` and `replay_stop`. While the replay runs, the top bar shows the "Replay" banner and the controls show the recorded state, mode, time, progress and result.
+
 ## Tests and Dec 4 demo
 
 Every test has its inputs in `fixtures/<TEST-ID>/` (input files + a README saying what can be edited) and runs with

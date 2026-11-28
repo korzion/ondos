@@ -1,4 +1,4 @@
-// Electron main process: creates the app window and nothing else.
+// Electron main process: creates the app window and reads the recording files for replay.
 // The bus, the tabs and all app logic live in the renderer (src/renderer/app.ts),
 // which connects to the broker over WebSocket (IF-03).
 import { app, BrowserWindow, Menu } from "electron";
@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DRAW_LOG_ENV, DRAW_LOG_PREFIX, DRAW_LOG_QUERY_FLAG } from "../common/drawLog";
 import { HEALTH_LOG_ENV, HEALTH_LOG_PREFIX, HEALTH_LOG_QUERY_FLAG } from "../common/healthLog";
 import { type TestLog, test_log_path, write_test_log } from "./testLogFile";
+import { handle_recording_files } from "./recordingFiles";
 
 const WINDOW_WIDTH = 1280;
 const WINDOW_HEIGHT = 800;
@@ -37,10 +38,12 @@ function create_window(): void {
     title: "Ondos Control Station",
     show: false,
     webPreferences: {
-      // The renderer is a plain web page: no Node APIs in it.
+      // The renderer is a plain web page: no Node APIs in it. The preload script gives it only
+      // the recording files (#84).
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: join(__dirname, "../preload/preload.js"),
     },
   });
 
@@ -67,6 +70,7 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     Menu.setApplicationMenu(null);
   }
+  handle_recording_files();
   create_window();
 
   // macOS keeps the app running with no window; clicking the dock icon opens one again.
