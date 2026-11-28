@@ -10,13 +10,14 @@ namespace ondos {
 
 class GloveHandler {
  public:
-  // Initializes Wi-Fi STA mode and ESP-NOW, and registers GLOVE_MAC as a peer.
+  // Initializes Wi-Fi STA mode, ESP-NOW, and registers GLOVE_MAC as peer.
+  // Returns false if GLOVE_MAC is all zeros or ESP-NOW setup fails (IF-01).
   bool begin();
 
   // Periodic update: sends GameInfo heartbeat at 5 Hz and immediately on change.
   void update(uint32_t now_ms);
 
-  // Parses inbound IF-01 ESP-NOW packets (GloveData, GloveStatus).
+  // Parses and validates inbound IF-01 ESP-NOW packets (GloveData, GloveStatus).
   void processGloveData(const uint8_t* data, size_t len, int8_t rssi_dbm);
 
   // Sends an IF-01 Haptic command to the glove (scales intensity by vibration_intensity_pct).
@@ -29,28 +30,24 @@ class GloveHandler {
   void setGameInfo(Mode mode, State state, bool is_vibration_enabled,
                    uint8_t vibration_intensity_pct, uint8_t calibrate_request);
 
-  // True if GloveData arrived within GLOVE_DATA_LOSS_MS (300 ms).
+  // True if valid GloveData arrived within GLOVE_DATA_LOSS_MS (300 ms).
   bool isGloveConnected(uint32_t now_ms) const;
 
-  bool hasGloveData() const { return has_glove_data_; }
-  bool hasGloveStatus() const { return has_glove_status_; }
-  const espnow::GloveData& getGloveData() const { return last_glove_data_; }
-  const espnow::GloveStatus& getGloveStatus() const { return last_glove_status_; }
-  int8_t getRssiDbm() const { return rssi_dbm_; }
+  // Thread-safe copy-out getters.
+  bool hasGloveData() const;
+  bool hasGloveStatus() const;
+  espnow::GloveData getGloveData() const;
+  espnow::GloveStatus getGloveStatus() const;
+  int8_t getRssiDbm() const;
 
  private:
   static bool isZeroMac(const uint8_t mac[6]);
   static bool isSameMac(const uint8_t a[6], const uint8_t b[6]);
-  bool ensurePeer(const uint8_t mac[6]);
-  bool sendGameInfo();
-
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  bool sendGameInfo(uint32_t now_ms);
   static void onEspNowRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len);
-#else
-  static void onEspNowRecv(const uint8_t* mac, const uint8_t* data, int len);
-#endif
 
   static GloveHandler* instance_;
+  mutable portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
 
   bool initialized_ = false;
   bool peer_added_ = false;
@@ -66,9 +63,16 @@ class GloveHandler {
 
   uint32_t last_glove_data_ms_ = 0;
   uint32_t last_game_info_ms_ = 0;
-  int8_t rssi_dbm_ = -50;
+  int8_t rssi_dbm_ = DEFAULT_RSSI_DBM;
 
-  static constexpr uint32_t GAME_INFO_PERIOD_MS = 200;  // 5 Hz (IF-01)
+  static constexpr uint32_t GAME_INFO_PERIOD_MS = 200;       // 5 Hz (IF-01)
+  static constexpr uint16_t NOT_MOVING_HAPTIC_MS = 200;
+  static constexpr uint16_t AWAY_FROM_EXIT_HAPTIC_MS = 250;
+  static constexpr uint16_t MAX_HAPTIC_DURATION_MS = 2000;
+  static constexpr uint8_t MAX_PERCENT = 100;
+  static constexpr int8_t DEFAULT_RSSI_DBM = -50;
+  static constexpr int8_t MIN_RSSI_DBM = -100;
+  static constexpr int8_t MAX_RSSI_DBM = 0;
 };
 
 }  // namespace ondos
