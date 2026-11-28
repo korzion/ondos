@@ -5,15 +5,16 @@ import type { Callback, Message } from "@shared/bus/bus";
 import {
     GAME_STATE, GAME_WARNING, VISION_BALL, VISION_MAZE, PLAN_DISTANCE_MAP, PLAN_ROUTE, VISION_STATUS,
     VISION_EVENT, VISION_EDIT_STATE, AI_TARGET_TILT, CONTROL_TARGET_TILT, AI_STATUS, PLATFORM_STATE,
-    GLOVE_STATE, GAME_STATE_MAX_AGE_MS, WRITER_VALUES, Writer, sysOnline,
+    GLOVE_STATE, GAME_STATE_MAX_AGE_MS, WRITER_VALUES, Writer, sysOnline, topicInfo,
 } from "@shared/topics";
 import { BusClient } from "./busClient";
 
 const MS_PER_S = 1000;
 
 // Max delay of every topic the app reads (IF-07 "What the app reads"), from the "Control Station"
-// reader rows of the interface appendix. null: no max delay for the Control Station there (events,
-// or topics only other modules time out), so the panel shows the age but never turns the row red.
+// reader rows of the interface appendix. ASSUMPTION (#83): null means the appendix gives no max delay for
+// the Control Station (events, or topics only other modules time out), so the panel shows the age but
+// never turns the row red.
 // vision/image is left out: it has no envelope, and CameraTab subscribes to it only while open.
 const MAX_DELAY_MS: Readonly<Record<string, number | null>> = {
     [GAME_STATE]: GAME_STATE_MAX_AGE_MS, // IF-05: "No GameManager"
@@ -37,6 +38,10 @@ const LISTED_PROGRAMS = WRITER_VALUES.filter((program) => program !== "replay");
 
 const NO_VALUE_TEXT = "–";
 
+// ASSUMPTION (#83): E.8 does not say how long the two-writer warning stays on. Here it stays on while the
+// last message from a wrong writer is at most this old, the longest max delay above (vision/status).
+const WRONG_WRITER_HOLD_S = 3;
+
 export type MissingChangeCallback = (topic: string, is_missing: boolean) => void;
 
 interface HealthRow {
@@ -49,10 +54,13 @@ interface HealthRow {
 
 interface TopicHealth {
     readonly max_delay_ms: number | null;
-    readonly writers: Set<Writer>; // every live writer seen on this topic
+    readonly expected_writer: string; // the topic's writer in TOPIC_TABLE
     readonly row: HealthRow;
     last_t_recv_s: number | null;
     last_seq: number | null;
+    last_writer: Writer | null;
+    last_wrong_writer: Writer | null;
+    last_wrong_t_recv_s: number | null;
     is_missing: boolean;
 }
 
@@ -69,6 +77,22 @@ function format_age(health: TopicHealth, now_s: number): string {
 
 function format_max_delay(max_delay_ms: number | null): string {
     return max_delay_ms === null ? NO_VALUE_TEXT : `${max_delay_ms / MS_PER_S} s`;
+}
+
+// E.8: every topic has one writer, its writer in TOPIC_TABLE. Stand-ins use the real program id, so
+// they are not wrong writers. Returns the wrong writer while its last message is recent, else null.
+function recent_wrong_writer(health: TopicHealth, now_s: number): Writer | null {
+    if (health.last_wrong_t_recv_s === null) return null;
+    if (now_s - health.last_wrong_t_recv_s > WRONG_WRITER_HOLD_S) return null;
+    return health.last_wrong_writer;
+}
+
+// The two-writer warning wins: it means the data on the topic cannot be trusted even when fresh.
+function status_text(health: TopicHealth, wrong_writer: Writer | null): string {
+    if (wrong_writer !== null) return `Two writers: ${health.expected_writer}, ${wrong_writer}`;
+    if (health.is_missing) return "Missing";
+    if (health.last_t_recv_s === null) return "No data yet";
+    return "OK";
 }
 
 // A topic with a max delay is missing when it never came or came longer ago than that.
@@ -97,27 +121,36 @@ export class TopicHealthMonitor {
 
         for (const [topic, max_delay_ms] of Object.entries(MAX_DELAY_MS)) {
             const row = this.create_row(table_body, topic, max_delay_ms);
-            this.topics.set(topic, { max_delay_ms, writers: new Set(), row, last_t_recv_s: null, last_seq: null, is_missing: false });
+            this.topics.set(topic, {
+                max_delay_ms, expected_writer: topicInfo(topic).writer, row, last_t_recv_s: null, last_seq: null,
+                last_writer: null, last_wrong_writer: null, last_wrong_t_recv_s: null, is_missing: false,
+            });
             bus_client.subscribe(topic, this.message_callback);
         }
         for (const program of WRITER_VALUES) {
             bus_client.subscribe(sysOnline(program), (_topic, msg) => this.on_online(program, msg === true));
         }
+        this.show_programs();
     }
 
-    // writer is not in the E.5 signature; the two-writer check needs it (#83).
+    // ASSUMPTION (#83): E.5 gives on_message(topic, seq, t_recv_s); writer is added for the two-writer check.
     on_message(topic: string, writer: Writer, seq: number, t_recv_s: number): void {
         const health = this.topics.get(topic);
         // Replay plays a topic only while its real writer is off, so it says nothing about the live writer.
         if (!health || writer === "replay") return;
         health.last_t_recv_s = t_recv_s;
         health.last_seq = seq;
-        health.writers.add(writer);
+        health.last_writer = writer;
+        if (writer !== health.expected_writer) {
+            health.last_wrong_writer = writer;
+            health.last_wrong_t_recv_s = t_recv_s;
+        }
     }
 
     on_online(program: string, is_online: boolean): void {
         if (is_online) this.online_programs.add(program);
         else this.online_programs.delete(program);
+        this.show_programs();
     }
 
     check_topics(now_s: number): void {
@@ -125,7 +158,6 @@ export class TopicHealthMonitor {
             this.update_missing(topic, health, now_s);
             this.show_row(health, now_s);
         }
-        this.show_programs();
     }
 
     private update_missing(topic: string, health: TopicHealth, now_s: number): void {
@@ -135,28 +167,13 @@ export class TopicHealthMonitor {
         this.on_missing_change(topic, is_missing);
     }
 
-    // Every topic has one live writer (IF-03). A writer that went offline no longer counts, so a
-    // stand-in that replaced a stopped program, or a program that restarted, is not a second writer.
-    private online_writers(health: TopicHealth): Writer[] {
-        return [...health.writers].filter((writer) => this.online_programs.has(writer));
-    }
-
     private show_row(health: TopicHealth, now_s: number): void {
-        const online_writers = this.online_writers(health);
-        const has_two_writers = online_writers.length > 1;
-        health.row.writer.textContent = health.writers.size === 0 ? NO_VALUE_TEXT : [...health.writers].join(", ");
+        const wrong_writer = recent_wrong_writer(health, now_s);
+        health.row.writer.textContent = health.last_writer ?? NO_VALUE_TEXT;
         health.row.age.textContent = format_age(health, now_s);
         health.row.seq.textContent = health.last_seq === null ? NO_VALUE_TEXT : String(health.last_seq);
-        health.row.status.textContent = this.status_text(health, online_writers);
-        health.row.root.classList.toggle("is-unhealthy", health.is_missing || has_two_writers);
-    }
-
-    // The two-writer warning wins: it means the data on the topic cannot be trusted even when fresh.
-    private status_text(health: TopicHealth, online_writers: Writer[]): string {
-        if (online_writers.length > 1) return `Two writers: ${online_writers.join(", ")}`;
-        if (health.is_missing) return "Missing";
-        if (health.last_t_recv_s === null) return "No data yet";
-        return "OK";
+        health.row.status.textContent = status_text(health, wrong_writer);
+        health.row.root.classList.toggle("is-unhealthy", health.is_missing || wrong_writer !== null);
     }
 
     private show_programs(): void {
