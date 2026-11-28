@@ -1,7 +1,5 @@
 // Host unit tests for MotorController (runs standalone with or without -DNDEBUG):
-//   clang++ -std=gnu++17 -Wall -Wextra -Werror -DNDEBUG \
-//     tilting-platform/firmware/src/MotorController.cpp \
-//     tilting-platform/firmware/test/test_motor_controller.cpp -o /tmp/test_mc && /tmp/test_mc
+//   clang++ -std=gnu++17 -Wall -Wextra -Werror -DNDEBUG tilting-platform/firmware/src/MotorController.cpp tilting-platform/firmware/test/test_motor_controller.cpp -o /tmp/test_mc && /tmp/test_mc
 #include <cmath>
 #include <iostream>
 #include <limits>
