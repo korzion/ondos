@@ -91,12 +91,30 @@
         font-weight: bold;
       }
 
-      /* Start tab: commands and status stay in place, only the log scrolls. */
+      /* Start tab: commands and status stay in place, only the log scrolls. The 2D maze view
+         fills the right column; the controls and the log keep the left one. */
       .start-tab {
+        position: relative;
         height: 100%;
+        box-sizing: border-box;
+        padding-right: calc(var(--maze-view-width) + 16px);
         display: flex;
         flex-direction: column;
         gap: 12px;
+        --maze-view-width: min(45%, 640px);
+      }
+      .maze-view {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: var(--maze-view-width);
+        overflow: hidden;
+        border-radius: 4px;
+        background: #14181d;
+      }
+      .maze-view canvas {
+        display: block;
       }
       .command-row {
         display: flex;
@@ -135,6 +153,36 @@
       }
       .status-line.is-missing {
         color: #ff8a80;
+      }
+
+      .health-panel {
+        flex-shrink: 0;
+        max-height: 40%;
+        overflow-y: auto;
+        padding: 8px 12px;
+        border-radius: 4px;
+        background: #252b33;
+        font-size: 0.85em;
+      }
+      .health-programs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        margin-bottom: 6px;
+      }
+      .program-badge.is-offline,
+      .health-table tr.is-unhealthy {
+        color: #ff8a80;
+      }
+      .health-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .health-table th,
+      .health-table td {
+        padding: 2px 8px;
+        border-top: 1px solid #3a4350;
+        text-align: left;
       }
 
       .log-list {

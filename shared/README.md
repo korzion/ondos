@@ -8,6 +8,7 @@ Code and data used by more than one module (design document IF-03). A library in
 | `bus/` | Bus helpers (envelope, sys/online) for Python and TypeScript; `mosquitto.conf` | Shared |
 | `protocol/`, `firmware/include/` | IF-02 serial framing and IF-01 / IF-02 packet definitions for the bridge (Python) and the ESP32s (C++) | A (serial), B (ESP-NOW) |
 | `mazes/` | Maze file format, consistency check, distance map and route function | C |
+| `ball_filter/` | Ball filter: filtered ball position and velocity, is_visible and is_predicted | C |
 | `tools/replay/` | Playback tool: replay mode and fixture mode (IF-09) | Shared |
 | `testing/` | Common base for every module's `run_test.py` | Shared |
 | `samples/` | Sample recordings for standalone demos | E |

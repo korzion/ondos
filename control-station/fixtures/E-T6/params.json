@@ -1,0 +1,16 @@
+{
+  "health_log_path": "out/e-t6-health-log.jsonl",
+  "warm_up_s": 3,
+  "recovery_s": 1.5,
+  "warning_window_s": 1.0,
+  "silence_margin_s": 0.5,
+  "early_tolerance_ms": 50,
+  "topics": {
+    "game/state": {"rate_hz": 10, "max_delay_ms": 300},
+    "platform/state": {"rate_hz": 50, "max_delay_ms": 200},
+    "glove/state": {"rate_hz": 50, "max_delay_ms": 200},
+    "vision/ball": {"rate_hz": 30, "max_delay_ms": 200},
+    "vision/status": {"rate_hz": 1, "max_delay_ms": 3000},
+    "ai/status": {"rate_hz": 10, "max_delay_ms": 1000}
+  }
+}
