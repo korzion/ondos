@@ -4,7 +4,7 @@
 // alike, as in the 3D Twin; the replay tool sends only topics whose real writer is offline.
 import type { Callback, Message } from "@shared/bus/bus";
 import { nowS } from "@shared/bus/bus";
-import { PLAN_DISTANCE_MAP, PLAN_ROUTE, VISION_BALL, VISION_EVENT, VISION_MAZE, WallSide } from "@shared/topics";
+import { EditState, PLAN_DISTANCE_MAP, PLAN_ROUTE, VISION_BALL, VISION_EDIT_STATE, VISION_EVENT, VISION_MAZE, WallSide } from "@shared/topics";
 import { cellCentreMm, hasWall, isInGrid, pathToExit, WALL_E, WALL_N, WALL_S, WALL_W, type Cell, type MazeGeometry } from "@shared/mazes/mazes";
 import { BusClient } from "./busClient";
 import { Tab } from "./tab";
@@ -13,6 +13,11 @@ import { Tab } from "./tab";
 const MAZE_VIEW_RATE_HZ = 20;
 const MS_PER_S = 1000;
 const BALL_MAX_AGE_MS = 200; // IF-04 vision/ball: older than this, the ball is drawn as stale
+// The route is drawn only while it is fresh and the playfield is clear ("What the app reads": a missing
+// vision/edit_state or plan/route is treated as not clear, no route drawn). Same limits as GameManager.
+const ROUTE_MAX_AGE_MS = 300; // IF-04 plan/route, reader E
+const EDIT_STATE_MAX_AGE_MS = 2000; // IF-04 vision/edit_state (1 Hz + on change), reader E
+// ASSUMPTION: the design does not say how long a wall hit is shown; 1 s is our choice.
 const WALL_HIT_SHOWN_MS = 1000; // how long a hit wall stays red
 const MAX_WALL_HITS = 64; // hits kept at once, so a hidden tab cannot collect them without end
 
@@ -51,6 +56,7 @@ interface DistanceMapMsg { maze_id: string; steps: number[][]; }
 interface RouteMsg { maze_id: string; status: string; ball_cell: Cell | null; }
 interface BallMsg { x_mm: number; y_mm: number; is_visible: boolean; }
 interface WallHit { cell: Cell; wall: number; until_s: number; }
+interface Received<T> { msg: T; t_recv_s: number; }
 
 // Board millimetres to canvas pixels, +y up.
 interface ViewScale { px_per_mm: number; left_px: number; top_px: number; left_mm: number; top_mm: number; }
@@ -61,8 +67,9 @@ export class MazeView {
     private readonly start_tab: Tab;
     private maze: MazeMsg | null = null;
     private distance_map: DistanceMapMsg | null = null;
-    private route: RouteMsg | null = null;
-    private ball: { msg: BallMsg; t_recv_s: number } | null = null;
+    private route: Received<RouteMsg> | null = null;
+    private edit_state: Received<EditState> | null = null;
+    private ball: Received<BallMsg> | null = null;
     private wall_hits: WallHit[] = [];
     private has_reported_draw_error = false;
 
@@ -74,7 +81,10 @@ export class MazeView {
         const subscriptions: ReadonlyArray<[string, Callback]> = [
             [VISION_MAZE, (_topic, msg) => this.on_maze(msg as Message)],
             [PLAN_DISTANCE_MAP, (_topic, msg) => this.on_distance_map(msg as Message)],
-            [PLAN_ROUTE, (_topic, msg) => { this.route = msg as unknown as RouteMsg; }], // checked when drawn
+            [PLAN_ROUTE, (_topic, msg, t_recv_s) => { this.route = { msg: msg as unknown as RouteMsg, t_recv_s }; }],
+            [VISION_EDIT_STATE, (_topic, msg, t_recv_s) => {
+                this.edit_state = { msg: (msg as Message).state as EditState, t_recv_s };
+            }],
             [VISION_BALL, (_topic, msg, t_recv_s) => this.on_ball(msg as Message, t_recv_s)],
             [VISION_EVENT, (_topic, msg) => this.on_event(msg as Message)],
         ];
@@ -140,9 +150,10 @@ export class MazeView {
         draw_start_cell(context, scale, maze);
         draw_walls(context, scale, maze, this.wall_hits);
         draw_exit(context, scale, maze);
-        const path = this.path_points_mm(maze, now_s);
+        const route = this.current_route(maze, now_s);
+        const path = route === null ? [] : this.path_points_mm(maze, route, now_s);
         if (path.length > 0) draw_path(context, scale, path);
-        else draw_text(context, NO_PATH_TEXT);
+        else if (route?.status === "no_path") draw_text(context, NO_PATH_TEXT);
         this.draw_ball(context, scale, maze, now_s);
     }
 
@@ -169,13 +180,23 @@ export class MazeView {
         return context;
     }
 
-    // From the ball (or its cell's centre) through the cell centres to the exit marker. Empty while the
-    // route, the map and the maze are not of the same maze_id, so a new maze never shows an old path.
-    private path_points_mm(maze: MazeMsg, now_s: number): [number, number][] {
+    // The latest route of this maze, while it is fresh and the playfield is clear; null otherwise, so a
+    // hand in the playfield, a stopped Vision or a new maze never leaves an old path on the screen.
+    private current_route(maze: MazeMsg, now_s: number): RouteMsg | null {
         const route = this.route;
+        const edit_state = this.edit_state;
+        if (route === null || is_older_than(route, now_s, ROUTE_MAX_AGE_MS)) return null;
+        if (edit_state === null || is_older_than(edit_state, now_s, EDIT_STATE_MAX_AGE_MS)) return null;
+        if (edit_state.msg !== "clear" || route.msg.maze_id !== maze.maze_id) return null;
+        return route.msg;
+    }
+
+    // From the ball (or its cell's centre) through the cell centres to the exit marker. Empty while the
+    // map is not of this maze.
+    private path_points_mm(maze: MazeMsg, route: RouteMsg, now_s: number): [number, number][] {
         const map = this.distance_map;
-        if (route === null || map === null || route.status !== "valid" || !is_cell_of(maze, route.ball_cell)) return [];
-        if (route.maze_id !== maze.maze_id || map.maze_id !== maze.maze_id) return [];
+        if (map === null || route.status !== "valid" || !is_cell_of(maze, route.ball_cell)) return [];
+        if (map.maze_id !== maze.maze_id) return [];
         if (!has_grid_shape(map.steps, maze)) return [];
         const cells = pathToExit(maze, map.steps, route.ball_cell);
         if (cells.length === 0) return [];
@@ -189,7 +210,7 @@ export class MazeView {
     private fresh_visible_ball(now_s: number): BallMsg | null {
         const ball = this.ball;
         if (ball === null || !ball.msg.is_visible) return null;
-        return (now_s - ball.t_recv_s) * MS_PER_S <= BALL_MAX_AGE_MS ? ball.msg : null;
+        return is_older_than(ball, now_s, BALL_MAX_AGE_MS) ? null : ball.msg;
     }
 
     // A lost or stale ball stays at its last place as a grey ring.
@@ -211,6 +232,10 @@ export class MazeView {
 }
 
 // ------------------------------------------------------------------ message checks
+
+function is_older_than(received: Received<unknown>, now_s: number, max_age_ms: number): boolean {
+    return (now_s - received.t_recv_s) * MS_PER_S > max_age_ms;
+}
 
 // IF-04 fields the drawing needs: cells, a wall flag per cell, sizes a circle can have.
 function is_drawable_maze(maze: MazeMsg): boolean {

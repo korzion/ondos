@@ -50,7 +50,7 @@ On Ubuntu 24.04 the AppImage needs `sudo apt install libfuse2t64`, or run it wit
 
 ### Maze view
 
-The Start tab's right column shows the maze, north (+y) up: walls, the start cell, the exit marker (green), the path to the exit (yellow) and the ball (a grey ring when it is lost or older than 200 ms). A wall hit (`vision/event`) turns that wall red for 1 s. The path follows `plan/distance_map` from the `ball_cell` of `plan/route` with the shared maze helper (`shared/mazes/mazes.ts`), and is drawn only while the maze, the map and the route have the same `maze_id`. It redraws at 20 Hz while the Start tab is open (`maze_view_rate_hz` follows with the cs variables, #142).
+The Start tab's right column shows the maze, north (+y) up: walls, the start cell, the exit marker (green), the path to the exit (yellow) and the ball (a grey ring when it is lost or older than 200 ms). A wall hit (`vision/event`) turns that wall red for 1 s. The path follows `plan/distance_map` from the `ball_cell` of `plan/route` with the shared maze helper (`shared/mazes/mazes.ts`), and is drawn only while the maze, the map and the route have the same `maze_id`, the route is younger than 300 ms and `vision/edit_state` is `clear` (a missing or stale edit state counts as not clear). "No path to the exit" is shown only for a route with status `no_path`. It redraws at 20 Hz while the Start tab is open (`maze_view_rate_hz` follows with the cs variables, #142).
 
 ## GameManager
 
